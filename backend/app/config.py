@@ -1,9 +1,9 @@
-from pydantic_settings import BaseSettings
-from typing import Dict, List
-import os
+from pydantic_settings import BaseSettings #to check the settings
+from typing import Dict, List # what type of data to expect 
+import os # to talk with the os
 from dotenv import load_dotenv
 
-load_dotenv()
+load_dotenv() # load from .env
 
 
 class Settings(BaseSettings):
@@ -24,6 +24,7 @@ class Settings(BaseSettings):
 settings = Settings()
 
 # dummy towers 
+# each tower has an assigned zones
 
 TOWER_ZONE_MAP: Dict[str, List[dict]] = {
     "tower_cairo_nac_001": [

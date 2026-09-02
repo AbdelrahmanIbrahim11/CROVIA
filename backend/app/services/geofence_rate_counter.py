@@ -25,8 +25,8 @@ from typing import Optional
 
 import redis.asyncio as aioredis
 
-from crovia.config.settings import settings, ZONE_CONFIG_MAP
-from crovia.models.webhooks import GeofencingNotification, DualTriggerEvent
+from app.config import settings, ZONE_CONFIG_MAP
+from app.schemas.webhook import GeofencingNotification, DualTriggerEvent
 
 
 _GEO_SUB_TO_ZONE_KEY = "crovia:geo_sub_zone_map"         # hash: sub_id -- zone_id

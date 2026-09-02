@@ -1,13 +1,15 @@
 
 
+import asyncio
 import logging
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 
-from crovia.config.redis_client import get_redis, close_redis
-from crovia.trigger.subscription_manager import bootstrap_subscriptions
-from crovia.webhook.handlers import router as webhook_router
+from app.db.redis import get_redis, close_redis
+from app.services.subscription_manager import bootstrap_subscriptions
+from app.api.webhooks import router as webhook_router
+from app.services.location_retrieval import location_retrieval_listener
 
 logging.basicConfig(
     level=logging.INFO,
@@ -32,6 +34,9 @@ async def lifespan(app: FastAPI):
     redis = await get_redis()
     devices = _load_opted_in_devices()
 
+    # Start the location retrieval Redis listener in the background
+    listener_task = asyncio.create_task(location_retrieval_listener(redis))
+
     try:
         results = await bootstrap_subscriptions(redis, devices)
         logger.info(
@@ -47,6 +52,13 @@ async def lifespan(app: FastAPI):
         logger.error("Failed to bootstrap subscriptions: %s", e, exc_info=True)
 
     yield 
+
+    logger.info("Cancelling background tasks...")
+    listener_task.cancel()
+    try:
+        await listener_task
+    except asyncio.CancelledError:
+        pass
 
     await close_redis()
     logger.info("Crovia shutting down.")

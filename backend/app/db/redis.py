@@ -1,5 +1,5 @@
 import redis.asyncio as aioredis
-from crovia.config.settings import settings
+from app.config import settings
 
 _client: aioredis.Redis | None = None
 

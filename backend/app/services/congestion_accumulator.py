@@ -5,8 +5,8 @@ from typing import Optional
 
 import redis.asyncio as aioredis
 
-from crovia.config.settings import settings, TOWER_ZONE_MAP
-from crovia.models.webhooks import CongestionNotification
+from app.config import settings, TOWER_ZONE_MAP
+from app.schemas.webhook import CongestionNotification
 
 
 # these are just the key names we use to store stuff in redis
@@ -118,7 +118,13 @@ async def process_congestion_event(
     # armed means: congestion is confirmed, if geofencing also fires → dual trigger
     # the key expires automatically so zones disarm themselves if congestion drops
     arm_ttl = settings.congestion_window_seconds * 4
+    newly_armed = []
+    
     for zone_id in zone_ids:
+        was_armed = await redis.exists(f"crovia:armed:{zone_id}")
+        if not was_armed:
+            newly_armed.append(zone_id)
+            
         await redis.setex(
             f"crovia:armed:{zone_id}",
             arm_ttl,
@@ -129,6 +135,13 @@ async def process_congestion_event(
                 "armed_at": now_ts,  # geofence counter uses this to normalize the entry rate
             }),
         )
+
+    # only pay nokia for geofencing if the zone just became dangerous
+    if newly_armed:
+        import asyncio
+        from app.services.subscription_manager import subscribe_to_geofencing_zones
+        # run this in the background so the webhook responds quickly
+        asyncio.create_task(subscribe_to_geofencing_zones(redis, newly_armed))
 
     # return the list of armed zone ids so the caller knows what got triggered
     return zone_ids

@@ -4,9 +4,9 @@ from typing import Optional
 import network_as_code as nac
 import redis.asyncio as aioredis
 
-from crovia.config.settings import settings, TOWER_ZONE_MAP, ZONE_CONFIG_MAP
-from crovia.trigger.congestion_accumulator import register_congestion_subscription
-from crovia.trigger.geofence_rate_counter import register_geofencing_subscription
+from app.config import settings, TOWER_ZONE_MAP, ZONE_CONFIG_MAP
+from app.services.congestion_accumulator import register_congestion_subscription
+from app.services.geofence_rate_counter import register_geofencing_subscription
 
 
 def _make_nac_client() -> nac.NetworkAsCodeApi:
@@ -60,16 +60,21 @@ async def bootstrap_subscriptions(
         except Exception as e:
             results["errors"].append({"phone": phone[-4:], "error": str(e), "type": "congestion"})
 
+    return results
+
+async def subscribe_to_geofencing_zones(redis: aioredis.Redis, zone_ids: list[str]) -> dict:
+    client = _make_nac_client()
+    results = {"geofencing": [], "errors": []}
+    
     geo_expire = (
         datetime.datetime.now(datetime.timezone.utc)
         + datetime.timedelta(days=1)
     )
 
-    # Collect all unique zones across all towers
-    all_zones = list(ZONE_CONFIG_MAP.values())
-
-    for zone in all_zones:
-        zone_id = zone["zone_id"]
+    for zone_id in zone_ids:
+        zone = ZONE_CONFIG_MAP.get(zone_id)
+        if not zone:
+            continue
 
         # Subscribe to area-entered
         try:
@@ -79,9 +84,6 @@ async def bootstrap_subscriptions(
                 types=["org.camaraproject.geofencing-subscriptions.v0.area-entered"],
                 config={
                     "subscription_detail": {
-                        # In production: subscribe each opted-in device.
-                        # Here we use a representative sentinel for the zone.
-                        # The real crowd signal comes from aggregated events.
                         "device": {"phone_number": _zone_sentinel_phone(zone_id)},
                         "area": {
                             "area_type": "CIRCLE",
@@ -107,7 +109,7 @@ async def bootstrap_subscriptions(
                 zone_id=zone_id,
             )
 
-            # Subscribe to area-left for same zone (separate subscription per Nokia docs)
+            # Subscribe to area-left for same zone
             sub_exit = client.geofencing.create_subscription(
                 protocol="HTTP",
                 sink=f"{settings.webhook_base_url}/webhooks/geofencing",

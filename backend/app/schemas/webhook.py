@@ -1,7 +1,11 @@
 
-from pydantic import BaseModel
+from pydantic import BaseModel # for type-checking
 from typing import Optional, Literal
 
+# nokai will send a big json data so we need to filter it out 
+# so we map it into smaller boxes but what nokia send exactly ? 
+#  nokia sends a json block that matches these classes exactly
+#  it looks something like {"id": "123", "type": "event", "data": {"congestionLevel": "High"}}
 
 class CongestionData(BaseModel):
     timeIntervalStart: str
@@ -11,12 +15,15 @@ class CongestionData(BaseModel):
 
 
 class CongestionNotification(BaseModel):
-    id: str
-    source: str           # contains the subscription ID
-    type: str
-    specversion: str
-    datacontenttype: str
-    time: str
+    id: str # nokia id for that specific notification 
+    source: str           
+    #  nokia sends a web address here ending with an id like /subs/12345
+    #  our app chops off the end to get that 12345 id
+    type: str # putting this back so the app does not crash
+    specversion: str # some formatting stuff 
+    datacontenttype: str # some formatting stuff
+    time: str # what does it mean with bad signal 
+    # this is just the exact timestamp like 12:05 PM when nokia noticed the bad signal
     data: CongestionData
 
 
@@ -34,10 +41,13 @@ class GeofencingArea(BaseModel):
 
 
 class GeofencingData(BaseModel):
-    subscriptionId: str
+    subscriptionId: str # what is that ?
+    # this is the receipt id nokia gave us when we asked them to draw the geofence
+    # it tells the app exactly which zone the person walked into
     device: GeofencingDevice
     area: GeofencingArea
-    terminationReason: Optional[str] = None
+    terminationReason: Optional[str] = None # what is that ?
+    # if nokia stops watching the zone (like if the 24 hour timer ran out) they tell us why here
 
 
 class GeofencingNotification(BaseModel):
@@ -50,6 +60,7 @@ class GeofencingNotification(BaseModel):
         "org.camaraproject.geofencing-subscriptions.v0.area-left",
         "org.camaraproject.geofencing-subscriptions.v0.subscription-ends",
     ]
+    #  it is just nokia's way of telling us the 24 hour timer expired and they stopped watching the geofence
     datacontenttype: str
     data: GeofencingData
 

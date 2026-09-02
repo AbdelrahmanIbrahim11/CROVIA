@@ -15,6 +15,7 @@ _TOWER_WINDOW_KEY = "crovia:congestion:window:{tower_id}"   # sorted set (score=
 _TOWER_CONFIDENCE_KEY = "crovia:congestion:confidence:{tower_id}"  # list of confidence values
 _ARMED_ZONES_KEY = "crovia:armed_zones"                     # set of currently-armed zone IDs
 _SUB_TO_TOWER_KEY = "crovia:sub_tower_map"                  # hash: subscription_id -- tower_id
+_SUB_TO_PHONE_KEY = "crovia:sub_phone_map"                  # hash: subscription_id -- hashed_phone
 _ZONE_DEVICES_KEY = "crovia:zone_devices:{zone_id}"         # set of hashed phone numbers in zone
 
 
@@ -39,8 +40,11 @@ async def register_congestion_subscription(
 
     # link this subscription id to the tower so we can look it up later when nokia sends an event
     await redis.hset(_SUB_TO_TOWER_KEY, subscription_id, tower_cell_id)
+    hashed_p = _hash_phone(phone_number)
+    # also link the sub id to the specific phone so we know who is complaining
+    await redis.hset(_SUB_TO_PHONE_KEY, subscription_id, hashed_p)
     # store the hashed phone under the tower so we can sample it later if a trigger fires
-    await redis.sadd(f"crovia:tower_devices:{tower_cell_id}", _hash_phone(phone_number))
+    await redis.sadd(f"crovia:tower_devices:{tower_cell_id}", hashed_p)
 
 
 async def process_congestion_event(
@@ -81,6 +85,13 @@ async def process_congestion_event(
     # this lets redis keep events ordered by time automatically
     member = f"{sub_id}:{now_ts}"
     await redis.zadd(window_key, {member: now_ts})
+
+    # save the phone that reported high congestion so we can grab its gps later
+    hashed_phone = await redis.hget(_SUB_TO_PHONE_KEY, sub_id)
+    if hashed_phone:
+        high_phones_key = f"crovia:congestion:high_phones:{tower_id}"
+        await redis.sadd(high_phones_key, hashed_phone)
+        await redis.expire(high_phones_key, settings.congestion_window_seconds * 4)
 
     # also save the confidence value separately so we can average it later
     await redis.lpush(conf_key, confidence)

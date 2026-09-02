@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException, Header, Request
 from app.config import settings
-from app.schemas.webhook import CongestionNotification, GeofencingNotification
+from app.schemas.webhook import CongestionNotification, GeofencingNotification, AppLocationReport
 from app.services.congestion_accumulator import process_congestion_event
 from app.services.geofence_rate_counter import process_geofencing_event
 from app.db.redis import get_redis
@@ -36,4 +36,14 @@ async def handle_geofencing(request: Request, notification: GeofencingNotificati
     redis = await get_redis()
     # pass the event to our rate counter logic
     await process_geofencing_event(redis, notification)
+    return {"status": "ok"}
+
+
+# the mobile app calls this endpoint when we wake it up
+@router.post("/api/location/heartbeat")
+async def handle_app_location(report: AppLocationReport):
+    redis = await get_redis()
+    # in real life, your backend checks lat/lon to find the zone
+    # and then adds it to the congestion accumulator math
+    print(f"User {report.phone_number} woke up and is at {report.latitude}, {report.longitude}")
     return {"status": "ok"}

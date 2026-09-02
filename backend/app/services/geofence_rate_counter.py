@@ -138,9 +138,18 @@ async def process_geofencing_event(
     # Set cooldown lock
     await redis.setex(triggered_key, 300, "1")
 
-    # Sample opted-in devices currently inside the zone
-    all_devices_in_zone = await redis.smembers(_ZONE_DEVICES_KEY.format(zone_id=zone_id))
-    all_devices = list(all_devices_in_zone)
+    # Sample only the devices that are currently inside the zone
+    # AND also reported high congestion to minimize api costs
+    high_phones_key = f"crovia:congestion:high_phones:{armed_data['tower_id']}"
+    zone_devices_key = _ZONE_DEVICES_KEY.format(zone_id=zone_id)
+    
+    # sinter finds the overlapping phones that exist in both lists
+    target_devices = await redis.sinter(high_phones_key, zone_devices_key)
+    all_devices = list(target_devices)
+    
+    # if the intersection is empty for some reason, fallback to anyone in the zone
+    if not all_devices:
+        all_devices = list(await redis.smembers(zone_devices_key))
 
     sample_size = min(settings.location_sample_size, len(all_devices))
     sampled = random.sample(all_devices, sample_size) if sample_size > 0 else []

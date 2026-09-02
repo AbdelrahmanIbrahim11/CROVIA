@@ -21,6 +21,14 @@ class CongestionNotification(BaseModel):
     #  our app chops off the end to get that 12345 id
     type: str # putting this back so the app does not crash
     specversion: str # some formatting stuff 
+
+
+class AppLocationReport(BaseModel):
+    # this is the message the mobile app sends us when it wakes up
+    phone_number: str
+    latitude: float
+    longitude: float
+    timestamp: str
     datacontenttype: str # some formatting stuff
     time: str # what does it mean with bad signal 
     # this is just the exact timestamp like 12:05 PM when nokia noticed the bad signal

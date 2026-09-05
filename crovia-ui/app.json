@@ -1,0 +1,13 @@
+{
+  "expo": {
+    "name": "Crovia",
+    "slug": "crovia-ui",
+    "version": "0.1.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "dark",
+    "backgroundColor": "#131C33",
+    "assetBundlePatterns": ["**/*"],
+    "ios": { "supportsTablet": true },
+    "android": { "adaptiveIcon": { "backgroundColor": "#131C33" } }
+  }
+}

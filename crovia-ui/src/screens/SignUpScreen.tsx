@@ -1,18 +1,18 @@
 import React from 'react';
+import { KeyboardAvoidingView, Platform, Image as RNImage } from 'react-native';
 import {
-  KeyboardAvoidingView,
-  Platform,
+  Box,
+  Text,
+  VStack,
+  HStack,
+  Input,
+  InputField as GluestackInputField,
   Pressable,
   ScrollView,
-  StyleSheet,
-  Text,
-  View,
-} from 'react-native';
-import { Button } from '../components/Button';
-import { InputField } from '../components/InputField';
-import { LogoMark } from '../components/Logo';
-import { useTheme } from '../theme/ThemeProvider';
-import { curve, hairline, radius, space, type } from '../theme/tokens';
+  Center,
+} from '@gluestack-ui/themed';
+import { MotionButton } from '../components/MotionButton';
+import { DropInText, TypewriterText } from '../components/AnimatedText';
 
 export function SignUpScreen({
   onCreate,
@@ -21,92 +21,99 @@ export function SignUpScreen({
   onCreate: () => void;
   onBack: () => void;
 }) {
-  const { colors } = useTheme();
+  const bgColor = '#161A28';
+  const accentColor = '#F2A93B';
+  const cardBg = '#1E2336';
+  const textPrimary = '#F0F0F0';
+  const textMuted = '#9CA3AF';
 
   return (
     <KeyboardAvoidingView
-      style={{ flex: 1, backgroundColor: colors.bgBase }}
+      style={{ flex: 1, backgroundColor: bgColor }}
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
     >
-      <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled">
-        <Pressable onPress={onBack} hitSlop={10} accessibilityRole="button" style={styles.back}>
-          <Text style={[type.label, { color: colors.textSecondary }]}>‹ Back</Text>
-        </Pressable>
-
-        <LogoMark size={48} />
-
-        <View style={styles.intro}>
-          <Text style={[type.displayMd, { color: colors.textPrimary }]}>Create your account</Text>
-          <Text style={[type.body, { color: colors.textSecondary }]}>
-            Your number is how we reach you when a crowd forms nearby, including by SMS if the
-            network is congested.
-          </Text>
-        </View>
-
-        <View style={styles.form}>
-          <InputField label="Full name" placeholder="Nour Mahmoud" autoCapitalize="words" />
-          <InputField
-            label="Phone number"
-            placeholder="+20 100 000 0000"
-            keyboardType="phone-pad"
-            status="success"
-            helper="We'll send a code to confirm this number"
+      <ScrollView contentContainerStyle={{ flexGrow: 1, justifyContent: 'center' }} keyboardShouldPersistTaps="handled">
+        
+        <Center px="$6" py="$12">
+          {/* Logo Image */}
+          <RNImage 
+            source={require('../../assets/logo.png')} 
+            style={{ width: 300, height: 85, resizeMode: 'contain', marginBottom: 40 }} 
           />
-          <InputField
-            label="Email"
-            placeholder="you@example.com"
-            keyboardType="email-address"
-            autoCapitalize="none"
-          />
-          <InputField
-            label="Password"
-            placeholder="At least 8 characters"
-            secureTextEntry
-            status="error"
-            helper="Use at least 8 characters"
-          />
-        </View>
 
-        <View style={[styles.consent, { borderColor: colors.borderSubtle }]}>
-          <View style={[styles.checkbox, { borderColor: colors.accent, backgroundColor: colors.accent }]}>
-            <Text style={{ color: colors.textOnAccent, fontSize: 12, fontWeight: '700' }}>✓</Text>
-          </View>
-          <Text style={[type.bodySm, { color: colors.textSecondary, flex: 1 }]}>
-            Share my approximate location with Crovia so it can warn me about crowds. You can turn
-            this off at any time.
-          </Text>
-        </View>
+          <Box 
+            bg={cardBg} 
+            p="$8" 
+            borderRadius="$2xl" 
+            width="100%" 
+            maxWidth={450}
+            borderWidth={1}
+            borderColor="#2A314A"
+            shadowColor="#000"
+            shadowOffset={{ width: 0, height: 20 }}
+            shadowOpacity={0.4}
+            shadowRadius={20}
+            elevation={15}
+          >
+            <VStack space="2xl">
+              <VStack space="xs" alignItems="center">
+                <DropInText text="Create your citizen account" color={textPrimary} />
+                <TypewriterText text="Join the Crovia network to stay safe." color={textMuted} delay={600} />
+              </VStack>
 
-        <Button label="Create account" full onPress={onCreate} />
+              <VStack space="xl">
+                <HStack space="md">
+                  <VStack space="xs" flex={1}>
+                    <Text size="sm" fontWeight="$medium" color={textPrimary}>First name</Text>
+                    <Input variant="outline" size="xl" borderRadius="$lg" borderColor="#333A54" $focus-borderColor={accentColor}>
+                      <GluestackInputField placeholder="Nour" color={textPrimary} placeholderTextColor="#6B7280" />
+                    </Input>
+                  </VStack>
+                  <VStack space="xs" flex={1}>
+                    <Text size="sm" fontWeight="$medium" color={textPrimary}>Last name</Text>
+                    <Input variant="outline" size="xl" borderRadius="$lg" borderColor="#333A54" $focus-borderColor={accentColor}>
+                      <GluestackInputField placeholder="Mahmoud" color={textPrimary} placeholderTextColor="#6B7280" />
+                    </Input>
+                  </VStack>
+                </HStack>
 
-        <Text style={[type.caption, { color: colors.textMuted, textAlign: 'center' }]}>
-          Location is sampled through your mobile operator, never from a third-party tracker.
-        </Text>
+                <VStack space="xs">
+                  <Text size="sm" fontWeight="$medium" color={textPrimary}>Phone number</Text>
+                  <Input variant="outline" size="xl" borderRadius="$lg" borderColor="#333A54" $focus-borderColor={accentColor}>
+                    <GluestackInputField placeholder="+20 100 000 0000" keyboardType="phone-pad" color={textPrimary} placeholderTextColor="#6B7280" />
+                  </Input>
+                </VStack>
+
+                <VStack space="xs">
+                  <Text size="sm" fontWeight="$medium" color={textPrimary}>Password</Text>
+                  <Input variant="outline" size="xl" borderRadius="$lg" borderColor="#333A54" $focus-borderColor={accentColor}>
+                    <GluestackInputField placeholder="••••••••" secureTextEntry color={textPrimary} placeholderTextColor="#6B7280" />
+                  </Input>
+                </VStack>
+
+                <MotionButton 
+                  label="Create account"
+                  color={accentColor}
+                  textColor="#161A28"
+                  mt="$2"
+                  onPress={onCreate}
+                />
+              </VStack>
+
+              <HStack space="sm" justifyContent="center" alignItems="center" mt="$2">
+                <Text size="sm" color={textMuted}>
+                  Already have an account?
+                </Text>
+                <Pressable onPress={onBack}>
+                  <Text size="sm" color={accentColor} fontWeight="$bold">
+                    Sign in
+                  </Text>
+                </Pressable>
+              </HStack>
+            </VStack>
+          </Box>
+        </Center>
       </ScrollView>
     </KeyboardAvoidingView>
   );
 }
-
-const styles = StyleSheet.create({
-  scroll: { padding: space.xl, paddingTop: 60, gap: space.xl, flexGrow: 1 },
-  back: { alignSelf: 'flex-start' },
-  intro: { gap: space.md, maxWidth: 460 },
-  form: { gap: space.lg },
-  consent: {
-    flexDirection: 'row',
-    gap: space.md,
-    borderWidth: hairline,
-    borderRadius: radius.md,
-    ...curve,
-    padding: space.lg,
-    alignItems: 'flex-start',
-  },
-  checkbox: {
-    width: 20,
-    height: 20,
-    borderRadius: 6,
-    borderWidth: hairline,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-});

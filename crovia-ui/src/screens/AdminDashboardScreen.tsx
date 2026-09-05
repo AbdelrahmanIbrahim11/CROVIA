@@ -1,14 +1,27 @@
 import React, { useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
-import { Button } from '../components/Button';
+import { ScrollView } from 'react-native';
+import { Box, Text, VStack, HStack, Pressable, Center } from '@gluestack-ui/themed';
 import { AppHeader, Metric, Sheet } from '../components/Chrome';
 import { CityMap } from '../components/CityMap';
-import { StatusChip, useLevelColors } from '../components/StatusChip';
+import { StatusChip } from '../components/StatusChip';
+import { MotionButton } from '../components/MotionButton';
 import { blobs, markers, REGION, zoneRows, zones } from '../data';
-import { useTheme } from '../theme/ThemeProvider';
-import { curve, hairline, radius, space, type } from '../theme/tokens';
 
 type Tool = null | 'draw' | 'reroute' | 'measure';
+
+const bgColor = '#161A28';
+const accentColor = '#F2A93B';
+const cardBg = '#1E2336';
+const textPrimary = '#F0F0F0';
+const textMuted = '#9CA3AF';
+const borderColor = '#2A314A';
+
+const levelColors = {
+  calm: { fg: '#00C851', bg: 'rgba(0, 200, 81, 0.15)' },
+  watch: { fg: '#33b5e5', bg: 'rgba(51, 181, 229, 0.15)' },
+  elevated: { fg: accentColor, bg: 'rgba(242, 169, 59, 0.15)' },
+  critical: { fg: '#ff4444', bg: 'rgba(255, 68, 68, 0.15)' },
+};
 
 export function AdminDashboardScreen({
   onSignOut,
@@ -19,8 +32,6 @@ export function AdminDashboardScreen({
   extraToolbar?: React.ReactNode;
   roleLabel?: string;
 }) {
-  const { colors } = useTheme();
-  const levels = useLevelColors();
   const [tool, setTool] = useState<Tool>(null);
   const [railOpen, setRailOpen] = useState(true);
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -32,7 +43,7 @@ export function AdminDashboardScreen({
   ];
 
   return (
-    <View style={{ flex: 1, backgroundColor: colors.bgBase }}>
+    <VStack flex={1} bg={bgColor}>
       <AppHeader
         region={REGION}
         subtitle={`${roleLabel} · 4 zones monitored`}
@@ -40,14 +51,19 @@ export function AdminDashboardScreen({
         onSettings={() => setSettingsOpen(true)}
       />
 
-      <View style={{ flex: 1 }}>
+      <Box flex={1}>
         <CityMap markers={markers} blobs={blobs} zones={zones} showGrid>
           {/* Editor toolbar */}
-          <View
-            style={[
-              styles.toolbar,
-              { backgroundColor: colors.bgSurface, borderColor: colors.borderSubtle },
-            ]}
+          <VStack
+            position="absolute"
+            top="$4"
+            right="$4"
+            bg="rgba(30, 35, 54, 0.9)"
+            borderWidth={1}
+            borderColor={borderColor}
+            borderRadius="$lg"
+            p="$1"
+            space="xs"
           >
             {tools.map((t) => {
               const on = tool === t.key;
@@ -57,170 +73,126 @@ export function AdminDashboardScreen({
                   onPress={() => setTool(on ? null : t.key)}
                   accessibilityRole="button"
                   accessibilityState={{ selected: on }}
-                  style={[
-                    styles.tool,
-                    on && { backgroundColor: colors.accentDim, borderColor: colors.accent },
-                  ]}
                 >
-                  <Text style={{ fontSize: 17, color: on ? colors.accent : colors.textSecondary }}>
-                    {t.glyph}
-                  </Text>
+                  <Center w={42} h={42} borderRadius="$md" bg={on ? 'rgba(242, 169, 59, 0.15)' : 'transparent'} borderColor={on ? accentColor : 'transparent'} borderWidth={1}>
+                    <Text size="xl" color={on ? accentColor : textMuted}>{t.glyph}</Text>
+                  </Center>
                 </Pressable>
               );
             })}
             {extraToolbar}
-          </View>
+          </VStack>
 
           {tool ? (
-            <View style={[styles.toolHint, { backgroundColor: colors.accentDim, borderColor: colors.accent }]}>
-              <Text style={[type.bodySm, { color: colors.accent }]}>
+            <Box
+              position="absolute"
+              top="$4"
+              left="$4"
+              right={80}
+              bg="rgba(242, 169, 59, 0.15)"
+              borderWidth={1}
+              borderColor={accentColor}
+              borderRadius="$lg"
+              p="$3"
+            >
+              <Text size="sm" color={accentColor} fontWeight="$bold">
                 {tool === 'draw'
                   ? 'Tap the map to place polygon corners. Double-tap to close the zone.'
                   : tool === 'reroute'
                   ? 'Drag from a congested zone to the destination you want people sent towards.'
                   : 'Tap two points to measure the distance between them.'}
               </Text>
-            </View>
+            </Box>
           ) : null}
         </CityMap>
 
         {/* Data rail */}
-        <View
-          style={[
-            styles.rail,
-            {
-              backgroundColor: colors.bgSurface,
-              borderColor: colors.borderSubtle,
-              maxHeight: railOpen ? '58%' : 66,
-            },
-          ]}
+        <VStack
+          position="absolute"
+          left={0}
+          right={0}
+          bottom={0}
+          bg={cardBg}
+          borderTopWidth={1}
+          borderTopColor={borderColor}
+          borderTopLeftRadius="$3xl"
+          borderTopRightRadius="$3xl"
+          px="$6"
+          pt="$4"
+          pb="$6"
+          maxHeight={railOpen ? '60%' : 70}
+          shadowColor="#000"
+          shadowOffset={{ width: 0, height: -5 }}
+          shadowOpacity={0.3}
+          shadowRadius={15}
+          elevation={20}
         >
-          <Pressable onPress={() => setRailOpen((o) => !o)} style={styles.railHead} accessibilityRole="button">
-            <Text style={[type.h3, { color: colors.textPrimary, flex: 1 }]}>Active regions</Text>
-            <StatusChip level="critical" label="1 critical" />
-            <Text style={[type.h3, { color: colors.textMuted }]}>{railOpen ? '⌄' : '⌃'}</Text>
+          <Pressable onPress={() => setRailOpen((o) => !o)} accessibilityRole="button">
+            <HStack alignItems="center" pb="$4">
+              <Text size="xl" fontWeight="$bold" color={textPrimary} flex={1}>Active regions</Text>
+              <HStack space="md" alignItems="center">
+                <StatusChip level="critical" label="1 critical" />
+                <Text size="xl" color={textMuted}>{railOpen ? '⌄' : '⌃'}</Text>
+              </HStack>
+            </HStack>
           </Pressable>
 
           {railOpen ? (
             <>
-              <View style={[styles.metrics, { borderColor: colors.borderSubtle }]}>
-                <Metric value="78" label="Peak danger score" tint={colors.danger} />
+              <HStack borderTopWidth={1} borderBottomWidth={1} borderColor={borderColor} py="$4" space="md">
+                <Metric value="78" label="Peak danger score" tint="#ff4444" />
                 <Metric value="4,400" label="People tracked" />
-                <Metric value="12" label="Probes active" tint={colors.info} />
-              </View>
+                <Metric value="12" label="Probes active" tint="#33b5e5" />
+              </HStack>
 
-              <ScrollView contentContainerStyle={styles.zoneList}>
-                {zoneRows.map((z) => (
-                  <Pressable
-                    key={z.id}
-                    accessibilityRole="button"
-                    style={[styles.zoneRow, { borderColor: colors.borderSubtle }]}
-                  >
-                    <View style={[styles.scorePill, { backgroundColor: levels[z.level].bg }]}>
-                      <Text style={[type.metricMd, { color: levels[z.level].fg }]}>{z.score}</Text>
-                    </View>
-                    <View style={{ flex: 1, gap: 2 }}>
-                      <Text style={[type.h4, { color: colors.textPrimary }]} numberOfLines={1}>
-                        {z.name}
-                      </Text>
-                      <Text style={[type.caption, { color: colors.textMuted }]}>
-                        {z.heads} people in zone
-                      </Text>
-                    </View>
-                    <StatusChip level={z.level} />
-                  </Pressable>
-                ))}
+              <ScrollView contentContainerStyle={{ gap: 12, paddingTop: 16, paddingBottom: 24 }}>
+                {zoneRows.map((z) => {
+                  const lc = levelColors[z.level];
+                  return (
+                    <Pressable key={z.id} accessibilityRole="button">
+                      <HStack
+                        alignItems="center"
+                        borderWidth={1}
+                        borderColor={borderColor}
+                        borderRadius="$xl"
+                        p="$3"
+                        space="md"
+                        bg="#111420"
+                      >
+                        <Center w={52} h={44} borderRadius="$lg" bg={lc.bg}>
+                          <Text size="lg" fontWeight="$bold" color={lc.fg}>{z.score}</Text>
+                        </Center>
+                        <VStack flex={1} space="xs">
+                          <Text size="md" fontWeight="$bold" color={textPrimary} numberOfLines={1}>{z.name}</Text>
+                          <Text size="xs" color={textMuted}>{z.heads} people in zone</Text>
+                        </VStack>
+                        <StatusChip level={z.level} />
+                      </HStack>
+                    </Pressable>
+                  );
+                })}
               </ScrollView>
             </>
           ) : null}
-        </View>
-      </View>
+        </VStack>
+      </Box>
 
       <Sheet visible={settingsOpen} title="Settings" onClose={() => setSettingsOpen(false)}>
-        <Text style={[type.bodySm, { color: colors.textSecondary }]}>
-          Signed in as an operations account for the Alexandria pilot.
+        <Text size="sm" color={textMuted}>
+          Signed in as an operations account for the pilot.
         </Text>
-        <Button
+        <MotionButton 
           label="Sign out"
-          variant="secondary"
-          full
+          variant="outline"
+          color="#ff4444"
+          textColor="#ff4444"
+          mt="$4"
           onPress={() => {
             setSettingsOpen(false);
             onSignOut();
           }}
         />
       </Sheet>
-    </View>
+    </VStack>
   );
 }
-
-const styles = StyleSheet.create({
-  toolbar: {
-    position: 'absolute',
-    top: space.lg,
-    right: space.lg,
-    borderWidth: hairline,
-    borderRadius: radius.md,
-    ...curve,
-    padding: 5,
-    gap: 5,
-  },
-  tool: {
-    width: 42,
-    height: 42,
-    borderRadius: radius.sm,
-    ...curve,
-    borderWidth: hairline,
-    borderColor: 'transparent',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  toolHint: {
-    position: 'absolute',
-    top: space.lg,
-    left: space.lg,
-    right: 80,
-    borderWidth: hairline,
-    borderRadius: radius.md,
-    ...curve,
-    padding: space.md,
-  },
-  rail: {
-    position: 'absolute',
-    left: 0,
-    right: 0,
-    bottom: 0,
-    borderTopWidth: hairline,
-    borderTopLeftRadius: radius.xl,
-    borderTopRightRadius: radius.xl,
-    paddingHorizontal: space.lg,
-    paddingTop: space.lg,
-    paddingBottom: space.xl,
-  },
-  railHead: { flexDirection: 'row', alignItems: 'center', gap: space.md, paddingBottom: space.md },
-  metrics: {
-    flexDirection: 'row',
-    gap: space.md,
-    borderTopWidth: hairline,
-    borderBottomWidth: hairline,
-    paddingVertical: space.md,
-  },
-  zoneList: { gap: space.sm, paddingTop: space.md, paddingBottom: space.lg },
-  zoneRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: space.md,
-    borderWidth: hairline,
-    borderRadius: radius.md,
-    ...curve,
-    padding: space.md,
-  },
-  scorePill: {
-    width: 52,
-    height: 44,
-    borderRadius: radius.sm,
-    ...curve,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-});

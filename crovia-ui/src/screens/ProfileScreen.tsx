@@ -1,9 +1,22 @@
 import React, { useState } from 'react';
-import { ScrollView, StyleSheet, Text, View } from 'react-native';
-import { Button } from '../components/Button';
-import { InputField } from '../components/InputField';
-import { useTheme } from '../theme/ThemeProvider';
-import { curve, hairline, radius, space, type } from '../theme/tokens';
+import { ScrollView } from 'react-native';
+import {
+  Box,
+  Text,
+  VStack,
+  HStack,
+  Center,
+  Input,
+  InputField as GluestackInputField,
+} from '@gluestack-ui/themed';
+import { MotionButton } from '../components/MotionButton';
+
+const bgColor = '#161A28';
+const accentColor = '#F2A93B';
+const cardBg = '#1E2336';
+const textPrimary = '#F0F0F0';
+const textMuted = '#9CA3AF';
+const borderColor = '#2A314A';
 
 const profile = {
   name: 'Nour Mahmoud',
@@ -12,120 +25,123 @@ const profile = {
 };
 
 export function ProfileScreen({ onSignOut }: { onSignOut: () => void }) {
-  const { colors } = useTheme();
   const [editing, setEditing] = useState(false);
   const [saved, setSaved] = useState(false);
 
   return (
-    <ScrollView
-      style={{ flex: 1, backgroundColor: colors.bgBase }}
-      contentContainerStyle={styles.scroll}
-    >
-      <View style={styles.head}>
-        <View style={[styles.avatar, { backgroundColor: colors.accentDim, borderColor: colors.accent }]}>
-          <Text style={[type.metricMd, { color: colors.accent }]}>NM</Text>
-        </View>
-        <View style={{ flex: 1, gap: 2 }}>
-          <Text style={[type.h2, { color: colors.textPrimary }]}>{profile.name}</Text>
-          <Text style={[type.bodySm, { color: colors.textMuted }]}>Citizen account</Text>
-        </View>
-      </View>
+    <Box flex={1} bg={bgColor}>
+      <ScrollView contentContainerStyle={{ padding: 24, paddingTop: 40, paddingBottom: 100 }}>
+        <VStack space="2xl">
+          <HStack alignItems="center" space="lg">
+            <Center w={70} h={70} borderRadius="$2xl" bg="rgba(242, 169, 59, 0.15)" borderWidth={1} borderColor={accentColor}>
+              <Text size="2xl" fontWeight="$bold" color={accentColor}>NM</Text>
+            </Center>
+            <VStack space="xs" flex={1}>
+              <Text size="2xl" fontWeight="$bold" color={textPrimary}>{profile.name}</Text>
+              <Text size="sm" color={textMuted}>Citizen account</Text>
+            </VStack>
+          </HStack>
 
-      {saved && !editing ? (
-        <View style={[styles.banner, { backgroundColor: colors.safeDim, borderColor: colors.safe }]}>
-          <Text style={[type.bodySm, { color: colors.safe }]}>Your details were saved.</Text>
-        </View>
-      ) : null}
+          {saved && !editing ? (
+            <Box bg="rgba(0, 200, 81, 0.15)" borderColor="#00C851" borderWidth={1} borderRadius="$lg" p="$4">
+              <Text size="sm" color="#00C851" fontWeight="$bold">Your details were saved.</Text>
+            </Box>
+          ) : null}
 
-      <View style={styles.section}>
-        <Text style={[type.h3, { color: colors.textPrimary }]}>Your details</Text>
+          <VStack space="lg">
+            <Text size="xl" fontWeight="$bold" color={textPrimary}>Your details</Text>
 
-        {editing ? (
-          <View style={styles.form}>
-            <InputField label="Full name" defaultValue={profile.name} />
-            <InputField
-              label="Phone number"
-              defaultValue={profile.phone}
-              keyboardType="phone-pad"
-              status="success"
-              helper="Verified"
-            />
-            <InputField
-              label="Email"
-              defaultValue={profile.email}
-              keyboardType="email-address"
-              autoCapitalize="none"
-            />
-            <View style={styles.actions}>
-              <Button
-                label="Save changes"
-                onPress={() => {
-                  setEditing(false);
-                  setSaved(true);
-                }}
+            {editing ? (
+              <VStack space="lg">
+                <VStack space="xs">
+                  <Text size="sm" fontWeight="$bold" color={textPrimary}>Full name</Text>
+                  <Input variant="outline" size="xl" borderRadius="$lg" borderColor={borderColor} $focus-borderColor={accentColor}>
+                    <GluestackInputField defaultValue={profile.name} color={textPrimary} />
+                  </Input>
+                </VStack>
+                <VStack space="xs">
+                  <Text size="sm" fontWeight="$bold" color={textPrimary}>Phone number</Text>
+                  <Input variant="outline" size="xl" borderRadius="$lg" borderColor={borderColor} $focus-borderColor={accentColor}>
+                    <GluestackInputField defaultValue={profile.phone} keyboardType="phone-pad" color={textPrimary} />
+                  </Input>
+                  <Text size="xs" color="#00C851">Verified</Text>
+                </VStack>
+                <VStack space="xs">
+                  <Text size="sm" fontWeight="$bold" color={textPrimary}>Email</Text>
+                  <Input variant="outline" size="xl" borderRadius="$lg" borderColor={borderColor} $focus-borderColor={accentColor}>
+                    <GluestackInputField defaultValue={profile.email} keyboardType="email-address" autoCapitalize="none" color={textPrimary} />
+                  </Input>
+                </VStack>
+                <HStack space="md" mt="$2">
+                  <MotionButton 
+                    label="Save changes"
+                    color={accentColor}
+                    textColor="#161A28"
+                    flex={1}
+                    onPress={() => { setEditing(false); setSaved(true); }}
+                  />
+                  <MotionButton 
+                    label="Cancel"
+                    variant="outline"
+                    color={borderColor}
+                    textColor={textPrimary}
+                    flex={1}
+                    onPress={() => setEditing(false)}
+                  />
+                </HStack>
+              </VStack>
+            ) : (
+              <Box bg={cardBg} borderRadius="$xl" borderWidth={1} borderColor={borderColor} px="$5" py="$2">
+                {[
+                  ['Name', profile.name],
+                  ['Phone', profile.phone],
+                  ['Email', profile.email],
+                ].map(([label, value], i) => (
+                  <HStack
+                    key={label}
+                    alignItems="center"
+                    py="$4"
+                    borderBottomWidth={i < 2 ? 1 : 0}
+                    borderBottomColor={borderColor}
+                  >
+                    <Text size="sm" color={textMuted} w={80}>{label}</Text>
+                    <Text size="md" color={textPrimary} flex={1}>{value}</Text>
+                  </HStack>
+                ))}
+              </Box>
+            )}
+
+            {!editing ? (
+              <MotionButton 
+                label="Edit details"
+                variant="outline"
+                color={borderColor}
+                textColor={textPrimary}
+                onPress={() => setEditing(true)}
               />
-              <Button label="Cancel" variant="ghost" onPress={() => setEditing(false)} />
-            </View>
-          </View>
-        ) : (
-          <View style={[styles.readout, { borderColor: colors.borderSubtle }]}>
-            {[
-              ['Name', profile.name],
-              ['Phone', profile.phone],
-              ['Email', profile.email],
-            ].map(([label, value], i) => (
-              <View
-                key={label}
-                style={[
-                  styles.row,
-                  i < 2 && { borderBottomWidth: hairline, borderBottomColor: colors.borderSubtle },
-                ]}
-              >
-                <Text style={[type.label, { color: colors.textMuted, width: 72 }]}>{label}</Text>
-                <Text style={[type.body, { color: colors.textPrimary, flex: 1 }]}>{value}</Text>
-              </View>
-            ))}
-          </View>
-        )}
+            ) : null}
+          </VStack>
 
-        {!editing ? <Button label="Edit details" variant="secondary" onPress={() => setEditing(true)} /> : null}
-      </View>
+          <VStack space="md">
+            <Text size="xl" fontWeight="$bold" color={textPrimary}>Rewards</Text>
+            <VStack bg="rgba(255, 187, 51, 0.15)" borderColor="#FFBB33" borderWidth={1} borderRadius="$xl" p="$5" space="xs">
+              <Text size="3xl" fontWeight="$bold" color="#FFBB33">3 GB</Text>
+              <Text size="sm" color={textPrimary} lineHeight="$md">
+                Earned this month for following rerouting guidance during crowd events.
+              </Text>
+            </VStack>
+          </VStack>
 
-      <View style={styles.section}>
-        <Text style={[type.h3, { color: colors.textPrimary }]}>Rewards</Text>
-        <View style={[styles.reward, { backgroundColor: colors.rewardDim, borderColor: colors.reward }]}>
-          <Text style={[type.metricLg, { color: colors.reward }]}>3 GB</Text>
-          <Text style={[type.bodySm, { color: colors.textSecondary }]}>
-            Earned this month for following rerouting guidance during crowd events.
-          </Text>
-        </View>
-      </View>
-
-      <Button label="Sign out" variant="secondary" full onPress={onSignOut} />
-    </ScrollView>
+          <MotionButton 
+            label="Sign out"
+            variant="outline"
+            color="#ff4444"
+            textColor="#ff4444"
+            mt="$4"
+            onPress={onSignOut}
+          />
+        </VStack>
+      </ScrollView>
+    </Box>
   );
 }
-
-const styles = StyleSheet.create({
-  scroll: { padding: space.xl, paddingTop: 56, gap: space.xl, paddingBottom: 48 },
-  head: { flexDirection: 'row', alignItems: 'center', gap: space.lg },
-  avatar: {
-    width: 64,
-    height: 64,
-    borderRadius: radius.lg,
-    ...curve,
-    borderWidth: hairline,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  banner: { borderWidth: hairline, borderRadius: radius.md,
-    ...curve, padding: space.md },
-  section: { gap: space.md },
-  form: { gap: space.lg },
-  readout: { borderWidth: hairline, borderRadius: radius.md,
-    ...curve, paddingHorizontal: space.lg },
-  row: { flexDirection: 'row', alignItems: 'center', gap: space.md, paddingVertical: 14 },
-  actions: { flexDirection: 'row', gap: space.md, alignItems: 'center' },
-  reward: { borderWidth: hairline, borderRadius: radius.lg,
-    ...curve, padding: space.lg, gap: 6 },
-});

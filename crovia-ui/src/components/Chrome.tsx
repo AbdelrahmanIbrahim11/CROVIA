@@ -1,9 +1,21 @@
 import React from 'react';
-import { Modal, Pressable, StyleSheet, Text, View } from 'react-native';
-import { useTheme } from '../theme/ThemeProvider';
-import { curve, elevation, hairline, radius, space, type } from '../theme/tokens';
-import { LogoMark } from './Logo';
+import { Modal, Dimensions, Image as RNImage, Animated, Platform } from 'react-native';
+import {
+  Box,
+  Text,
+  VStack,
+  HStack,
+  Pressable,
+  Center,
+} from '@gluestack-ui/themed';
 import { Badge } from './StatusChip';
+
+const bgColor = '#161A28';
+const accentColor = '#F2A93B';
+const cardBg = '#1E2336';
+const textPrimary = '#F0F0F0';
+const textMuted = '#9CA3AF';
+const borderColor = '#2A314A';
 
 export function AppHeader({
   region,
@@ -18,43 +30,51 @@ export function AppHeader({
   onBell?: () => void;
   onSettings?: () => void;
 }) {
-  const { colors } = useTheme();
   return (
-    <View
-      style={[
-        styles.header,
-        { backgroundColor: colors.bgBase, borderBottomColor: colors.borderSubtle },
-      ]}
+    <HStack
+      bg={bgColor}
+      px="$6"
+      py="$4"
+      alignItems="center"
+      justifyContent="space-between"
+      borderBottomWidth={1}
+      borderBottomColor={borderColor}
+      space="md"
     >
-      <LogoMark size={34} />
-      <View style={{ flex: 1 }}>
-        <Text style={[type.h3, { color: colors.textPrimary }]} numberOfLines={1}>
+      <RNImage 
+        source={require('../../assets/logo.png')} 
+        style={{ width: 100, height: 30, resizeMode: 'contain' }} 
+      />
+      
+      <VStack flex={1} ml="$2">
+        <Text size="md" fontWeight="$bold" color={textPrimary} numberOfLines={1}>
           {region}
         </Text>
         {subtitle ? (
-          <Text style={[type.caption, { color: colors.textMuted }]} numberOfLines={1}>
+          <Text size="xs" color={textMuted} numberOfLines={1}>
             {subtitle}
           </Text>
         ) : null}
-      </View>
+      </VStack>
 
-      <Pressable onPress={onBell} hitSlop={10} accessibilityRole="button" accessibilityLabel="Alerts">
-        <View style={[styles.iconBtn, { borderColor: colors.borderSubtle }]}>
-          <Text style={{ fontSize: 16, color: colors.textPrimary }}>◔</Text>
-          <Badge count={unread} />
-        </View>
-      </Pressable>
+      <HStack space="md">
+        <Pressable onPress={onBell} hitSlop={10} accessibilityRole="button" accessibilityLabel="Alerts">
+          <Center w={40} h={40} borderRadius="$full" borderWidth={1} borderColor={borderColor} bg={cardBg}>
+            <Text size="lg" color={textPrimary}>◔</Text>
+            {unread > 0 && <Badge count={unread} />}
+          </Center>
+        </Pressable>
 
-      <Pressable onPress={onSettings} hitSlop={10} accessibilityRole="button" accessibilityLabel="Settings">
-        <View style={[styles.iconBtn, { borderColor: colors.borderSubtle }]}>
-          <Text style={{ fontSize: 16, color: colors.textPrimary }}>⋯</Text>
-        </View>
-      </Pressable>
-    </View>
+        <Pressable onPress={onSettings} hitSlop={10} accessibilityRole="button" accessibilityLabel="Settings">
+          <Center w={40} h={40} borderRadius="$full" borderWidth={1} borderColor={borderColor} bg={cardBg}>
+            <Text size="lg" color={textPrimary}>⋯</Text>
+          </Center>
+        </Pressable>
+      </HStack>
+    </HStack>
   );
 }
 
-/** Bottom sheet used for marker detail, settings and the zone query form. */
 export function Sheet({
   visible,
   title,
@@ -66,30 +86,114 @@ export function Sheet({
   onClose: () => void;
   children: React.ReactNode;
 }) {
-  const { colors } = useTheme();
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
-      <Pressable style={[styles.scrim, { backgroundColor: colors.scrim }]} onPress={onClose} />
-      <View
-        style={[
-          styles.sheet,
-          { backgroundColor: colors.bgSurface, borderColor: colors.borderSubtle },
-        ]}
+      <Pressable style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.6)' }} onPress={onClose} />
+      <Box
+        position="absolute"
+        bottom={0}
+        left={0}
+        right={0}
+        bg={cardBg}
+        borderTopLeftRadius="$3xl"
+        borderTopRightRadius="$3xl"
+        p="$6"
+        pb="$10"
+        shadowColor="#000"
+        shadowOffset={{ width: 0, height: -5 }}
+        shadowOpacity={0.3}
+        shadowRadius={15}
+        elevation={20}
       >
-        <View style={[styles.grabber, { backgroundColor: colors.borderStrong }]} />
-        <View style={styles.sheetHead}>
-          <Text style={[type.h2, { color: colors.textPrimary, flex: 1 }]}>{title}</Text>
+        <Center w={40} h={4} borderRadius="$full" bg={borderColor} alignSelf="center" mt="-$2" mb="$4" />
+        <HStack alignItems="center" mb="$4">
+          <Text size="xl" fontWeight="$bold" color={textPrimary} flex={1}>{title}</Text>
           <Pressable onPress={onClose} hitSlop={10} accessibilityRole="button">
-            <Text style={[type.h2, { color: colors.textMuted }]}>×</Text>
+            <Center w={30} h={30} borderRadius="$full" bg="#2A314A">
+              <Text size="lg" color={textMuted}>×</Text>
+            </Center>
           </Pressable>
-        </View>
-        {children}
-      </View>
+        </HStack>
+        <VStack space="lg">
+          {children}
+        </VStack>
+      </Box>
     </Modal>
   );
 }
 
 export type TabKey = 'map' | 'alerts' | 'profile';
+
+function MotionTab({ 
+  item, 
+  active, 
+  unread = 0, 
+  onPress 
+}: { 
+  item: { key: TabKey; label: string; glyph: string }; 
+  active: boolean; 
+  unread?: number; 
+  onPress: () => void;
+}) {
+  const translateY = React.useRef(new Animated.Value(0)).current;
+  const scale = React.useRef(new Animated.Value(1)).current;
+
+  const handleHoverIn = () => {
+    if (Platform.OS === 'web') {
+      Animated.parallel([
+        Animated.spring(translateY, { toValue: -4, friction: 5, useNativeDriver: true }),
+        Animated.spring(scale, { toValue: 1.05, friction: 5, useNativeDriver: true })
+      ]).start();
+    }
+  };
+
+  const handleHoverOut = () => {
+    if (Platform.OS === 'web') {
+      Animated.parallel([
+        Animated.spring(translateY, { toValue: 0, friction: 5, useNativeDriver: true }),
+        Animated.spring(scale, { toValue: 1, friction: 5, useNativeDriver: true })
+      ]).start();
+    }
+  };
+
+  const handlePressIn = () => {
+    Animated.spring(scale, { toValue: 0.9, friction: 5, useNativeDriver: true }).start();
+  };
+
+  const handlePressOut = () => {
+    Animated.spring(scale, { toValue: 1, friction: 5, useNativeDriver: true }).start();
+  };
+
+  return (
+    <Pressable
+      onPress={onPress}
+      onPressIn={handlePressIn}
+      onPressOut={handlePressOut}
+      //@ts-ignore
+      onHoverIn={handleHoverIn}
+      //@ts-ignore
+      onHoverOut={handleHoverOut}
+      accessibilityRole="tab"
+      accessibilityState={{ selected: active }}
+      flex={1}
+      alignItems="center"
+    >
+      <Animated.View style={{ transform: [{ translateY }, { scale }] }}>
+        <VStack alignItems="center" space="xs">
+          <Box>
+            <Text size="xl" color={active ? accentColor : textMuted}>
+              {item.glyph}
+            </Text>
+            {item.key === 'alerts' && unread > 0 ? <Badge count={unread} /> : null}
+          </Box>
+          <Text size="xs" fontWeight={active ? "$bold" : "$medium"} color={active ? accentColor : textMuted}>
+            {item.label}
+          </Text>
+        </VStack>
+      </Animated.View>
+    </Pressable>
+  );
+}
 
 export function TabBar({
   active,
@@ -100,7 +204,6 @@ export function TabBar({
   unread?: number;
   onChange: (k: TabKey) => void;
 }) {
-  const { colors } = useTheme();
   const tabs: { key: TabKey; label: string; glyph: string }[] = [
     { key: 'map', label: 'Map', glyph: '◈' },
     { key: 'alerts', label: 'Alerts', glyph: '◔' },
@@ -108,36 +211,26 @@ export function TabBar({
   ];
 
   return (
-    <View
-      style={[styles.tabs, { backgroundColor: colors.bgBase, borderTopColor: colors.borderSubtle }]}
+    <HStack
+      bg={bgColor}
+      pt="$3"
+      pb="$6"
+      borderTopWidth={1}
+      borderTopColor={borderColor}
     >
-      {tabs.map((t) => {
-        const on = t.key === active;
-        return (
-          <Pressable
-            key={t.key}
-            onPress={() => onChange(t.key)}
-            accessibilityRole="tab"
-            accessibilityState={{ selected: on }}
-            style={styles.tab}
-          >
-            <View>
-              <Text style={{ fontSize: 18, color: on ? colors.accent : colors.textMuted }}>
-                {t.glyph}
-              </Text>
-              {t.key === 'alerts' ? <Badge count={unread} /> : null}
-            </View>
-            <Text style={[type.caption, { color: on ? colors.accent : colors.textMuted }]}>
-              {t.label}
-            </Text>
-          </Pressable>
-        );
-      })}
-    </View>
+      {tabs.map((t) => (
+        <MotionTab 
+          key={t.key} 
+          item={t} 
+          active={t.key === active} 
+          unread={unread} 
+          onPress={() => onChange(t.key)} 
+        />
+      ))}
+    </HStack>
   );
 }
 
-/** Small labelled figure used in the admin and police data rails. */
 export function Metric({
   value,
   label,
@@ -147,56 +240,10 @@ export function Metric({
   label: string;
   tint?: string;
 }) {
-  const { colors } = useTheme();
   return (
-    <View style={{ gap: 2, flex: 1 }}>
-      <Text style={[type.metricMd, { color: tint ?? colors.textPrimary }]}>{value}</Text>
-      <Text style={[type.caption, { color: colors.textMuted }]}>{label}</Text>
-    </View>
+    <VStack space="xs" flex={1}>
+      <Text size="2xl" fontWeight="$bold" color={tint ?? textPrimary}>{value}</Text>
+      <Text size="xs" color={textMuted}>{label}</Text>
+    </VStack>
   );
 }
-
-const styles = StyleSheet.create({
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: space.md,
-    paddingHorizontal: space.xl,
-    paddingVertical: 14,
-    borderBottomWidth: hairline,
-  },
-  iconBtn: {
-    width: 40,
-    height: 40,
-    borderRadius: radius.pill,
-    borderWidth: hairline,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  scrim: { ...StyleSheet.absoluteFill },
-  sheet: {
-    position: 'absolute',
-    left: 0,
-    right: 0,
-    bottom: 0,
-    borderTopLeftRadius: radius.xl,
-    borderTopRightRadius: radius.xl,
-    borderCurve: 'continuous',
-    borderWidth: 0,
-    ...elevation.high,
-    padding: space.xl,
-    paddingBottom: space.xxl,
-    gap: space.lg,
-  },
-  grabber: {
-    width: 40,
-    height: 4,
-    borderRadius: 2,
-    alignSelf: 'center',
-    marginTop: -8,
-    marginBottom: 4,
-  },
-  sheetHead: { flexDirection: 'row', alignItems: 'center', gap: space.md },
-  tabs: { flexDirection: 'row', borderTopWidth: hairline, paddingTop: 10, paddingBottom: 24 },
-  tab: { flex: 1, alignItems: 'center', gap: 4 },
-});

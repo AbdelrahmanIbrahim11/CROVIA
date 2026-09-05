@@ -1,7 +1,6 @@
 import React from 'react';
-import { StyleSheet, Text, View, ViewStyle } from 'react-native';
-import { useTheme } from '../theme/ThemeProvider';
-import { curve, radius, type } from '../theme/tokens';
+import { ViewStyle } from 'react-native';
+import { Box, Text, HStack, Center } from '@gluestack-ui/themed';
 
 export type Level = 'calm' | 'watch' | 'elevated' | 'critical';
 
@@ -12,15 +11,13 @@ export const levelLabel: Record<Level, string> = {
   critical: 'Critical',
 };
 
-export function useLevelColors() {
-  const { colors } = useTheme();
-  return {
-    calm: { fg: colors.safe, bg: colors.safeDim },
-    watch: { fg: colors.watch, bg: colors.watchDim },
-    elevated: { fg: colors.elevated, bg: colors.elevatedDim },
-    critical: { fg: colors.danger, bg: colors.dangerDim },
-  } as Record<Level, { fg: string; bg: string }>;
-}
+// Use hardcoded colors matching the new dark theme
+const levelColors: Record<Level, { fg: string; bg: string }> = {
+  calm: { fg: '#00C851', bg: 'rgba(0, 200, 81, 0.15)' },
+  watch: { fg: '#33b5e5', bg: 'rgba(51, 181, 229, 0.15)' },
+  elevated: { fg: '#F2A93B', bg: 'rgba(242, 169, 59, 0.15)' },
+  critical: { fg: '#ff4444', bg: 'rgba(255, 68, 68, 0.15)' },
+};
 
 export function StatusChip({
   level,
@@ -31,50 +28,42 @@ export function StatusChip({
   label?: string;
   style?: ViewStyle;
 }) {
-  const map = useLevelColors();
-  const c = map[level];
+  const c = levelColors[level];
   return (
-    <View style={[styles.chip, { backgroundColor: c.bg }, style]}>
-      <View style={[styles.dot, { backgroundColor: c.fg }]} />
-      <Text style={[type.label, { color: c.fg }]}>{label ?? levelLabel[level]}</Text>
-    </View>
+    <HStack
+      bg={c.bg}
+      px="$3"
+      py="$1"
+      borderRadius="$full"
+      alignItems="center"
+      alignSelf="flex-start"
+      space="xs"
+      style={style}
+    >
+      <Box w={8} h={8} borderRadius="$full" bg={c.fg} />
+      <Text size="xs" fontWeight="$bold" color={c.fg}>
+        {label ?? levelLabel[level]}
+      </Text>
+    </HStack>
   );
 }
 
 export function Badge({ count }: { count: number }) {
-  const { colors } = useTheme();
   if (count <= 0) return null;
   return (
-    <View style={[styles.badge, { backgroundColor: colors.danger }]}>
-      <Text style={[type.caption, { color: '#fff', fontWeight: '700' }]}>
+    <Center
+      position="absolute"
+      top={-6}
+      right={-8}
+      minWidth={20}
+      h={20}
+      borderRadius="$full"
+      bg="#ff4444"
+      px="$1"
+    >
+      <Text size="xs" fontWeight="$bold" color="#fff">
         {count > 9 ? '9+' : count}
       </Text>
-    </View>
+    </Center>
   );
 }
-
-const styles = StyleSheet.create({
-  chip: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 7,
-    paddingLeft: 10,
-    paddingRight: 12,
-    paddingVertical: 6,
-    borderRadius: radius.pill,
-    ...curve,
-    alignSelf: 'flex-start',
-  },
-  dot: { width: 7, height: 7, borderRadius: 4 },
-  badge: {
-    position: 'absolute',
-    top: -4,
-    right: -6,
-    minWidth: 18,
-    height: 18,
-    borderRadius: 9,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: 4,
-  },
-});

@@ -1,15 +1,29 @@
 import React, { useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, Switch, Text, View } from 'react-native';
-import { Button } from '../components/Button';
+import { ScrollView, Switch } from 'react-native';
+import {
+  Box,
+  Text,
+  VStack,
+  HStack,
+  Pressable,
+  Center,
+  Input,
+  InputField as GluestackInputField,
+} from '@gluestack-ui/themed';
 import { AppHeader, Sheet } from '../components/Chrome';
 import { CityMap } from '../components/CityMap';
-import { InputField } from '../components/InputField';
 import { MarkerData } from '../components/MapMarker';
 import { Toast } from '../components/NotificationCard';
 import { StatusChip } from '../components/StatusChip';
+import { MotionButton } from '../components/MotionButton';
 import { blobs, markers, notifications, REGION, REGION_SUB } from '../data';
-import { useTheme } from '../theme/ThemeProvider';
-import { curve, hairline, radius, space, type } from '../theme/tokens';
+
+const bgColor = '#161A28';
+const accentColor = '#F2A93B';
+const cardBg = '#1E2336';
+const textPrimary = '#F0F0F0';
+const textMuted = '#9CA3AF';
+const borderColor = '#2A314A';
 
 export function UserDashboardScreen({
   unread,
@@ -20,14 +34,13 @@ export function UserDashboardScreen({
   onOpenAlerts: () => void;
   onSignOut: () => void;
 }) {
-  const { colors, scheme, toggleScheme } = useTheme();
   const [selected, setSelected] = useState<MarkerData | null>(null);
   const [zoneOpen, setZoneOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [toastVisible, setToastVisible] = useState(true);
 
   return (
-    <View style={{ flex: 1, backgroundColor: colors.bgBase }}>
+    <VStack flex={1} bg={bgColor}>
       <AppHeader
         region={REGION}
         subtitle={REGION_SUB}
@@ -36,7 +49,7 @@ export function UserDashboardScreen({
         onSettings={() => setSettingsOpen(true)}
       />
 
-      <View style={{ flex: 1 }}>
+      <Box flex={1}>
         <CityMap
           markers={markers}
           blobs={blobs}
@@ -45,55 +58,83 @@ export function UserDashboardScreen({
         >
           {/* Live alert banner floats over the map */}
           {toastVisible ? (
-            <View style={styles.toastSlot}>
+            <Box position="absolute" top="$4" left="$4" right="$4">
               <Toast item={notifications[0]} onDismiss={() => setToastVisible(false)} />
-            </View>
+            </Box>
           ) : null}
 
           {/* Legend */}
-          <View style={[styles.legend, { backgroundColor: colors.bgSurface, borderColor: colors.borderSubtle }]}>
+          <VStack
+            position="absolute"
+            left="$4"
+            bottom={200}
+            bg="rgba(30, 35, 54, 0.9)"
+            borderWidth={1}
+            borderColor={borderColor}
+            borderRadius="$lg"
+            p="$3"
+            space="sm"
+          >
             {[
-              { c: colors.density1, l: 'Calm' },
-              { c: colors.density2, l: 'Watch' },
-              { c: colors.density3, l: 'Elevated' },
-              { c: colors.density4, l: 'Critical' },
+              { c: '#00C851', l: 'Calm' },
+              { c: '#33b5e5', l: 'Watch' },
+              { c: accentColor, l: 'Elevated' },
+              { c: '#ff4444', l: 'Critical' },
             ].map((row) => (
-              <View key={row.l} style={styles.legendRow}>
-                <View style={[styles.legendDot, { backgroundColor: row.c }]} />
-                <Text style={[type.caption, { color: colors.textSecondary }]}>{row.l}</Text>
-              </View>
+              <HStack key={row.l} alignItems="center" space="xs">
+                <Box w={10} h={10} borderRadius="$full" bg={row.c} />
+                <Text size="xs" color={textMuted} fontWeight="$medium">{row.l}</Text>
+              </HStack>
             ))}
-          </View>
+          </VStack>
 
           {/* Zone lookup trigger */}
           <Pressable
             onPress={() => setZoneOpen(true)}
             accessibilityRole="button"
-            style={[styles.fab, { backgroundColor: colors.bgSurface, borderColor: colors.borderSubtle }]}
+            position="absolute"
+            right="$4"
+            bottom={200}
           >
-            <Text style={{ fontSize: 18, color: colors.accent }}>◎</Text>
+            <Center w={48} h={48} bg="rgba(30, 35, 54, 0.9)" borderWidth={1} borderColor={borderColor} borderRadius="$lg">
+              <Text size="2xl" color={accentColor}>◎</Text>
+            </Center>
           </Pressable>
         </CityMap>
 
         {/* Standing status card */}
-        <View
-          style={[
-            styles.statusCard,
-            { backgroundColor: colors.bgSurface, borderColor: colors.borderSubtle },
-          ]}
+        <VStack
+          position="absolute"
+          left="$4"
+          right="$4"
+          bottom="$4"
+          bg={cardBg}
+          borderWidth={1}
+          borderColor={borderColor}
+          borderRadius="$xl"
+          p="$5"
+          space="lg"
+          shadowColor="#000"
+          shadowOffset={{ width: 0, height: 10 }}
+          shadowOpacity={0.3}
+          shadowRadius={15}
+          elevation={10}
         >
-          <View style={styles.statusTop}>
-            <View style={{ flex: 1, gap: 4 }}>
-              <Text style={[type.h3, { color: colors.textPrimary }]}>Your area right now</Text>
-              <Text style={[type.bodySm, { color: colors.textSecondary }]}>
-                Crowd building 180 m north of you
-              </Text>
-            </View>
+          <HStack alignItems="flex-start" justifyContent="space-between">
+            <VStack space="xs" flex={1} mr="$2">
+              <Text size="lg" fontWeight="$bold" color={textPrimary}>Your area right now</Text>
+              <Text size="sm" color={textMuted}>Crowd building 180 m north of you</Text>
+            </VStack>
             <StatusChip level="critical" />
-          </View>
-          <Button label="Show me the way out" full onPress={() => setSelected(markers[1])} />
-        </View>
-      </View>
+          </HStack>
+          <MotionButton 
+            label="Show me the way out"
+            color={accentColor}
+            textColor="#161A28"
+            onPress={() => setSelected(markers[1])}
+          />
+        </VStack>
+      </Box>
 
       {/* Marker detail */}
       <Sheet
@@ -101,131 +142,112 @@ export function UserDashboardScreen({
         title={selected?.name ?? ''}
         onClose={() => setSelected(null)}
       >
-        <Text style={[type.body, { color: colors.textSecondary }]}>{selected?.detail}</Text>
-        <View style={styles.metaRow}>
-          <Text style={[type.label, { color: colors.textMuted }]}>
-            {selected?.distance} from you
-          </Text>
-        </View>
-        <View style={styles.sheetActions}>
-          <Button label="Get directions" onPress={() => setSelected(null)} />
-          <Button label="Close" variant="ghost" onPress={() => setSelected(null)} />
-        </View>
+        <Text size="md" color={textMuted} lineHeight="$md">{selected?.detail}</Text>
+        <Text size="sm" color={accentColor} fontWeight="$bold">{selected?.distance} from you</Text>
+        
+        <HStack space="md" mt="$4">
+          <MotionButton 
+            label="Get directions"
+            color={accentColor}
+            textColor="#161A28"
+            flex={1}
+            onPress={() => setSelected(null)}
+          />
+          <MotionButton 
+            label="Close"
+            variant="outline"
+            color={borderColor}
+            textColor={textPrimary}
+            flex={1}
+            onPress={() => setSelected(null)}
+          />
+        </HStack>
       </Sheet>
 
       {/* Zone lookup */}
       <Sheet visible={zoneOpen} title="Check a specific spot" onClose={() => setZoneOpen(false)}>
-        <Text style={[type.bodySm, { color: colors.textSecondary }]}>
+        <Text size="sm" color={textMuted}>
           Enter a point and a radius to see crowd conditions there before you travel.
         </Text>
-        <View style={styles.pairRow}>
-          <View style={{ flex: 1 }}>
-            <InputField label="Latitude" placeholder="31.2404" keyboardType="numeric" />
-          </View>
-          <View style={{ flex: 1 }}>
-            <InputField label="Longitude" placeholder="29.9553" keyboardType="numeric" />
-          </View>
-        </View>
-        <InputField label="Radius in metres" placeholder="500" keyboardType="numeric" />
-        <View style={styles.sheetActions}>
-          <Button label="Check this area" onPress={() => setZoneOpen(false)} />
-          <Button label="Cancel" variant="ghost" onPress={() => setZoneOpen(false)} />
-        </View>
+        <HStack space="md">
+          <VStack space="xs" flex={1}>
+            <Text size="xs" color={textPrimary} fontWeight="$bold">Latitude</Text>
+            <Input variant="outline" size="xl" borderRadius="$lg" borderColor={borderColor} $focus-borderColor={accentColor}>
+              <GluestackInputField placeholder="31.2404" keyboardType="numeric" color={textPrimary} placeholderTextColor="#6B7280" />
+            </Input>
+          </VStack>
+          <VStack space="xs" flex={1}>
+            <Text size="xs" color={textPrimary} fontWeight="$bold">Longitude</Text>
+            <Input variant="outline" size="xl" borderRadius="$lg" borderColor={borderColor} $focus-borderColor={accentColor}>
+              <GluestackInputField placeholder="29.9553" keyboardType="numeric" color={textPrimary} placeholderTextColor="#6B7280" />
+            </Input>
+          </VStack>
+        </HStack>
+        <VStack space="xs">
+          <Text size="xs" color={textPrimary} fontWeight="$bold">Radius in metres</Text>
+          <Input variant="outline" size="xl" borderRadius="$lg" borderColor={borderColor} $focus-borderColor={accentColor}>
+            <GluestackInputField placeholder="500" keyboardType="numeric" color={textPrimary} placeholderTextColor="#6B7280" />
+          </Input>
+        </VStack>
+        
+        <HStack space="md" mt="$2">
+          <MotionButton 
+            label="Check this area"
+            color={accentColor}
+            textColor="#161A28"
+            flex={1}
+            onPress={() => setZoneOpen(false)}
+          />
+          <MotionButton 
+            label="Cancel"
+            variant="outline"
+            color={borderColor}
+            textColor={textPrimary}
+            flex={1}
+            onPress={() => setZoneOpen(false)}
+          />
+        </HStack>
       </Sheet>
 
       {/* Settings */}
       <Sheet visible={settingsOpen} title="Settings" onClose={() => setSettingsOpen(false)}>
         <ScrollView style={{ maxHeight: 300 }}>
-          <View style={[styles.settingRow, { borderColor: colors.borderSubtle }]}>
-            <View style={{ flex: 1 }}>
-              <Text style={[type.h4, { color: colors.textPrimary }]}>Daylight theme</Text>
-              <Text style={[type.caption, { color: colors.textMuted }]}>
-                Easier to read outdoors in bright sun
-              </Text>
-            </View>
+          <HStack alignItems="center" py="$4" borderBottomWidth={1} borderBottomColor={borderColor}>
+            <VStack flex={1} pr="$4">
+              <Text size="lg" fontWeight="$bold" color={textPrimary}>Location Services</Text>
+              <Text size="xs" color={textMuted}>Required for live crowd warnings near you</Text>
+            </VStack>
             <Switch
-              value={scheme === 'light'}
-              onValueChange={toggleScheme}
-              trackColor={{ true: colors.accent, false: colors.borderStrong }}
-              thumbColor={colors.bgSurface}
+              value={true}
+              trackColor={{ true: accentColor, false: '#4B5563' }}
+              thumbColor={textPrimary}
             />
-          </View>
-
-          <View style={[styles.settingRow, { borderColor: colors.borderSubtle }]}>
-            <View style={{ flex: 1 }}>
-              <Text style={[type.h4, { color: colors.textPrimary }]}>Share my location</Text>
-              <Text style={[type.caption, { color: colors.textMuted }]}>
-                Required for crowd warnings near you
-              </Text>
-            </View>
+          </HStack>
+          <HStack alignItems="center" py="$4" borderBottomWidth={1} borderBottomColor={borderColor}>
+            <VStack flex={1} pr="$4">
+              <Text size="lg" fontWeight="$bold" color={textPrimary}>Push Notifications</Text>
+              <Text size="xs" color={textMuted}>Get alerted instantly</Text>
+            </VStack>
             <Switch
-              value
-              trackColor={{ true: colors.accent, false: colors.borderStrong }}
-              thumbColor={colors.bgSurface}
+              value={true}
+              trackColor={{ true: accentColor, false: '#4B5563' }}
+              thumbColor={textPrimary}
             />
-          </View>
+          </HStack>
         </ScrollView>
 
-        <Button
+        <MotionButton 
           label="Sign out"
-          variant="secondary"
-          full
+          variant="outline"
+          color="#ff4444"
+          textColor="#ff4444"
+          mt="$4"
           onPress={() => {
             setSettingsOpen(false);
             onSignOut();
           }}
         />
       </Sheet>
-    </View>
+    </VStack>
   );
 }
-
-const styles = StyleSheet.create({
-  toastSlot: { position: 'absolute', top: space.lg, left: space.lg, right: space.lg },
-  legend: {
-    position: 'absolute',
-    left: space.lg,
-    bottom: 200,
-    borderWidth: hairline,
-    borderRadius: radius.md,
-    ...curve,
-    padding: 10,
-    gap: 6,
-  },
-  legendRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  legendDot: { width: 8, height: 8, borderRadius: 4 },
-  fab: {
-    position: 'absolute',
-    right: space.lg,
-    bottom: 200,
-    width: 48,
-    height: 48,
-    borderRadius: radius.md,
-    ...curve,
-    borderWidth: hairline,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  statusCard: {
-    position: 'absolute',
-    left: space.lg,
-    right: space.lg,
-    bottom: space.lg,
-    borderWidth: hairline,
-    borderRadius: radius.lg,
-    ...curve,
-    padding: space.lg,
-    gap: space.lg,
-  },
-  statusTop: { flexDirection: 'row', alignItems: 'flex-start', gap: space.md },
-  metaRow: { flexDirection: 'row' },
-  sheetActions: { flexDirection: 'row', gap: space.md, alignItems: 'center' },
-  pairRow: { flexDirection: 'row', gap: space.md },
-  settingRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: space.md,
-    paddingVertical: space.lg,
-    borderBottomWidth: hairline,
-  },
-});

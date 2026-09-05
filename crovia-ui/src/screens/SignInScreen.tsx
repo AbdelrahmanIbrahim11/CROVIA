@@ -1,25 +1,30 @@
 import React, { useState } from 'react';
+import { KeyboardAvoidingView, Platform, Image as RNImage, LayoutAnimation, UIManager } from 'react-native';
 import {
-  KeyboardAvoidingView,
-  Platform,
+  Box,
+  Text,
+  VStack,
+  HStack,
+  Input,
+  InputField as GluestackInputField,
   Pressable,
   ScrollView,
-  StyleSheet,
-  Text,
-  View,
-} from 'react-native';
-import { Button } from '../components/Button';
-import { InputField } from '../components/InputField';
-import { LogoLockup } from '../components/Logo';
-import { useTheme } from '../theme/ThemeProvider';
-import { curve, hairline, radius, space, type } from '../theme/tokens';
+  Center,
+} from '@gluestack-ui/themed';
+import { MotionButton } from '../components/MotionButton';
+import { DropInText, TypewriterText } from '../components/AnimatedText';
+import { AnimatedSegmentedControl } from '../components/AnimatedSegmentedControl';
+
+if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
+  UIManager.setLayoutAnimationEnabledExperimental(true);
+}
 
 export type Role = 'citizen' | 'admin' | 'police';
 
 const roles: { key: Role; label: string; blurb: string }[] = [
   { key: 'citizen', label: 'Citizen', blurb: 'Sign in with your phone or email' },
-  { key: 'admin', label: 'Admin', blurb: 'Provisioned accounts only' },
-  { key: 'police', label: 'Authority', blurb: 'Provisioned accounts only' },
+  { key: 'admin', label: 'Admin', blurb: 'Admin accounts are issued by operations. Contact them if you cannot sign in.' },
+  { key: 'police', label: 'Authority', blurb: 'Authority accounts are issued by operations. Contact them if you cannot sign in.' },
 ];
 
 export function SignInScreen({
@@ -29,122 +34,125 @@ export function SignInScreen({
   onSignIn: (role: Role) => void;
   onSignUp: () => void;
 }) {
-  const { colors } = useTheme();
   const [role, setRole] = useState<Role>('citizen');
   const active = roles.find((r) => r.key === role)!;
 
+  const handleRoleChange = (newRole: Role) => {
+    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+    setRole(newRole);
+  };
+
+  // Exact colors from the logo
+  const bgColor = '#161A28';
+  const accentColor = '#F2A93B';
+  const cardBg = '#1E2336';
+  const textPrimary = '#F0F0F0';
+  const textMuted = '#9CA3AF';
+
   return (
     <KeyboardAvoidingView
-      style={{ flex: 1, backgroundColor: colors.bgBase }}
+      style={{ flex: 1, backgroundColor: bgColor }}
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
     >
-      <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled">
-        <View style={styles.brand}>
-          <LogoLockup size={52} />
-        </View>
+      <ScrollView contentContainerStyle={{ flexGrow: 1, justifyContent: 'center' }} keyboardShouldPersistTaps="handled">
+        
+        <Center px="$6" py="$12">
+          {/* Exact Logo Image */}
+          <RNImage 
+            source={require('../../assets/logo.png')} 
+            style={{ width: 300, height: 85, resizeMode: 'contain', marginBottom: 40 }} 
+          />
 
-        <View style={styles.intro}>
-          <Text style={[type.displayLg, { color: colors.textPrimary }]}>
-            Know where the crowd is
-          </Text>
-          <Text style={[type.body, { color: colors.textSecondary }]}>
-            Live crowd conditions for your city, and a way out before a crush forms.
-          </Text>
-        </View>
+          <Box 
+            bg={cardBg} 
+            p="$8" 
+            borderRadius="$2xl" 
+            width="100%" 
+            maxWidth={450}
+            borderWidth={1}
+            borderColor="#2A314A"
+            shadowColor="#000"
+            shadowOffset={{ width: 0, height: 20 }}
+            shadowOpacity={0.4}
+            shadowRadius={20}
+            elevation={15}
+          >
+            <VStack space="2xl">
+              <VStack space="xs" alignItems="center">
+                <DropInText text="Welcome to Crovia" color={textPrimary} />
+                <TypewriterText text="Live crowd conditions for your city." color={textMuted} delay={600} />
+              </VStack>
 
-        {/* Role switcher */}
-        <View style={[styles.segment, { backgroundColor: colors.bgInset }]}>
-          {roles.map((r) => {
-            const on = r.key === role;
-            return (
-              <Pressable
-                key={r.key}
-                onPress={() => setRole(r.key)}
-                accessibilityRole="tab"
-                accessibilityState={{ selected: on }}
-                style={[
-                  styles.segmentItem,
-                  on && { backgroundColor: colors.bgElevated, borderColor: colors.accent },
-                ]}
-              >
-                <Text
-                  style={[
-                    type.label,
-                    { color: on ? colors.textPrimary : colors.textMuted },
-                  ]}
-                >
-                  {r.label}
-                </Text>
-              </Pressable>
-            );
-          })}
-        </View>
-        <Text style={[type.caption, { color: colors.textMuted }]}>{active.blurb}</Text>
+              {/* Animated Segmented Control */}
+              <AnimatedSegmentedControl
+                options={roles}
+                value={role}
+                onChange={handleRoleChange}
+                activeColor={accentColor}
+                inactiveColor="#111420"
+                textColor={textMuted}
+                activeTextColor="#161A28"
+              />
 
-        <View style={styles.form}>
-          {role === 'citizen' ? (
-            <InputField
-              label="Phone or email"
-              placeholder="+20 100 000 0000"
-              keyboardType="default"
-              autoCapitalize="none"
-            />
-          ) : (
-            <InputField
-              label="Work email"
-              placeholder="name@alexandria.gov.eg"
-              keyboardType="email-address"
-              autoCapitalize="none"
-            />
-          )}
+              <VStack space="xl">
+                {role === 'citizen' ? (
+                  <VStack space="xs">
+                    <Text size="sm" fontWeight="$medium" color={textPrimary}>Phone or email</Text>
+                    <Input variant="outline" size="xl" borderRadius="$lg" borderColor="#333A54" $focus-borderColor={accentColor}>
+                      <GluestackInputField placeholder="+20 100 000 0000" autoCapitalize="none" color={textPrimary} placeholderTextColor="#6B7280" />
+                    </Input>
+                  </VStack>
+                ) : (
+                  <VStack space="xs">
+                    <Text size="sm" fontWeight="$medium" color={textPrimary}>Work email</Text>
+                    <Input variant="outline" size="xl" borderRadius="$lg" borderColor="#333A54" $focus-borderColor={accentColor}>
+                      <GluestackInputField placeholder="name@gov.eg" keyboardType="email-address" autoCapitalize="none" color={textPrimary} placeholderTextColor="#6B7280" />
+                    </Input>
+                  </VStack>
+                )}
 
-          <InputField label="Password" placeholder="••••••••" secureTextEntry />
+                <VStack space="xs">
+                  <Text size="sm" fontWeight="$medium" color={textPrimary}>Password</Text>
+                  <Input variant="outline" size="xl" borderRadius="$lg" borderColor="#333A54" $focus-borderColor={accentColor}>
+                    <GluestackInputField placeholder="••••••••" secureTextEntry color={textPrimary} placeholderTextColor="#6B7280" />
+                  </Input>
+                </VStack>
 
-          <Pressable accessibilityRole="button" style={styles.forgot}>
-            <Text style={[type.label, { color: colors.accent }]}>Forgot password</Text>
-          </Pressable>
+                <Pressable alignSelf="flex-end">
+                  <Text size="sm" color={accentColor} fontWeight="$bold">
+                    Forgot password?
+                  </Text>
+                </Pressable>
 
-          <Button label="Sign in" full onPress={() => onSignIn(role)} />
-        </View>
+                <MotionButton 
+                  label="Sign in"
+                  color={accentColor}
+                  textColor="#161A28"
+                  mt="$2"
+                  onPress={() => onSignIn(role)}
+                />
+              </VStack>
 
-        {role === 'citizen' ? (
-          <View style={styles.footer}>
-            <Text style={[type.bodySm, { color: colors.textMuted }]}>New to Crovia?</Text>
-            <Pressable onPress={onSignUp} accessibilityRole="button">
-              <Text style={[type.label, { color: colors.accent }]}>Create an account</Text>
-            </Pressable>
-          </View>
-        ) : (
-          <View style={[styles.note, { borderColor: colors.borderSubtle }]}>
-            <Text style={[type.bodySm, { color: colors.textMuted }]}>
-              {active.label} accounts are issued by your operations lead. Contact them if you
-              cannot sign in.
-            </Text>
-          </View>
-        )}
+              {role === 'citizen' ? (
+                <HStack space="sm" justifyContent="center" alignItems="center" mt="$2">
+                  <Text size="sm" color={textMuted}>
+                    Don't have an account?
+                  </Text>
+                  <Pressable onPress={onSignUp}>
+                    <Text size="sm" color={accentColor} fontWeight="$bold">
+                      Sign up now
+                    </Text>
+                  </Pressable>
+                </HStack>
+              ) : (
+                <Box bg="#111420" borderRadius="$lg" p="$4" mt="$2" minHeight={80} justifyContent="center">
+                  <TypewriterText text={active.blurb} delay={300} speed={25} size="sm" color={textMuted} textAlign="center" />
+                </Box>
+              )}
+            </VStack>
+          </Box>
+        </Center>
       </ScrollView>
     </KeyboardAvoidingView>
   );
 }
-
-const styles = StyleSheet.create({
-  scroll: { padding: space.xl, paddingTop: 72, gap: space.xl, flexGrow: 1 },
-  brand: { alignItems: 'flex-start' },
-  intro: { gap: space.md, maxWidth: 420 },
-  segment: { flexDirection: 'row', padding: 4, borderRadius: radius.md,
-    ...curve, gap: 4 },
-  segmentItem: {
-    flex: 1,
-    alignItems: 'center',
-    paddingVertical: 11,
-    borderRadius: radius.sm,
-    ...curve,
-    borderWidth: hairline,
-    borderColor: 'transparent',
-  },
-  form: { gap: space.lg },
-  forgot: { alignSelf: 'flex-end' },
-  footer: { flexDirection: 'row', gap: 6, alignItems: 'center', justifyContent: 'center' },
-  note: { borderWidth: hairline, borderRadius: radius.md,
-    ...curve, padding: space.lg },
-});

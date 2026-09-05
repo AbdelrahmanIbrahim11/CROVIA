@@ -1,5 +1,7 @@
 import React, { useState } from 'react';
 import { SafeAreaView, StatusBar, View } from 'react-native';
+import { GluestackUIProvider } from '@gluestack-ui/themed';
+import { config } from '@gluestack-ui/config';
 import { TabBar, TabKey } from './src/components/Chrome';
 import { notifications } from './src/data';
 import { AdminDashboardScreen } from './src/screens/AdminDashboardScreen';
@@ -9,18 +11,11 @@ import { ProfileScreen } from './src/screens/ProfileScreen';
 import { Role, SignInScreen } from './src/screens/SignInScreen';
 import { SignUpScreen } from './src/screens/SignUpScreen';
 import { UserDashboardScreen } from './src/screens/UserDashboardScreen';
-import { ThemeProvider, useTheme } from './src/theme/ThemeProvider';
-
-/**
- * Deliberately minimal navigation so the design can be reviewed end to end
- * without pulling in react-navigation. Replace with a real navigator when
- * the app gets its logic.
- */
+import { ThemeProvider } from './src/theme/ThemeProvider';
 
 type Route = 'signin' | 'signup' | 'citizen' | 'admin' | 'police';
 
 function Shell() {
-  const { colors, scheme } = useTheme();
   const [route, setRoute] = useState<Route>('signin');
   const [tab, setTab] = useState<TabKey>('map');
 
@@ -37,34 +32,45 @@ function Shell() {
     body = <SignInScreen onSignIn={signIn} onSignUp={() => setRoute('signup')} />;
   } else if (route === 'signup') {
     body = <SignUpScreen onCreate={() => setRoute('citizen')} onBack={() => setRoute('signin')} />;
-  } else if (route === 'admin') {
-    body = <AdminDashboardScreen onSignOut={() => setRoute('signin')} />;
-  } else if (route === 'police') {
-    body = <PoliceDashboardScreen onSignOut={() => setRoute('signin')} />;
   } else {
+    // All authenticated routes now have the Tab Bar!
+    let activeScreen: React.ReactNode = null;
+
+    if (tab === 'alerts') {
+      activeScreen = <NotificationsScreen />;
+    } else if (tab === 'profile') {
+      activeScreen = <ProfileScreen onSignOut={() => setRoute('signin')} />;
+    } else {
+      // tab is 'map'
+      if (route === 'admin') {
+        activeScreen = <AdminDashboardScreen onSignOut={() => setRoute('signin')} />;
+      } else if (route === 'police') {
+        activeScreen = <PoliceDashboardScreen onSignOut={() => setRoute('signin')} />;
+      } else {
+        activeScreen = (
+          <UserDashboardScreen
+            unread={unread}
+            onOpenAlerts={() => setTab('alerts')}
+            onSignOut={() => setRoute('signin')}
+          />
+        );
+      }
+    }
+
     body = (
       <View style={{ flex: 1 }}>
         <View style={{ flex: 1 }}>
-          {tab === 'map' ? (
-            <UserDashboardScreen
-              unread={unread}
-              onOpenAlerts={() => setTab('alerts')}
-              onSignOut={() => setRoute('signin')}
-            />
-          ) : tab === 'alerts' ? (
-            <NotificationsScreen />
-          ) : (
-            <ProfileScreen onSignOut={() => setRoute('signin')} />
-          )}
+          {activeScreen}
         </View>
         <TabBar active={tab} unread={unread} onChange={setTab} />
       </View>
     );
   }
 
+  // We enforce the deep navy color everywhere to match the auth screens
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: colors.bgBase }}>
-      <StatusBar barStyle={scheme === 'dark' ? 'light-content' : 'dark-content'} />
+    <SafeAreaView style={{ flex: 1, backgroundColor: '#161A28' }}>
+      <StatusBar barStyle="light-content" />
       {body}
     </SafeAreaView>
   );
@@ -73,7 +79,9 @@ function Shell() {
 export default function App() {
   return (
     <ThemeProvider>
-      <Shell />
+      <GluestackUIProvider config={config}>
+        <Shell />
+      </GluestackUIProvider>
     </ThemeProvider>
   );
 }

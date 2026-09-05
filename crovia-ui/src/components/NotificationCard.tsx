@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
-import { LayoutAnimation, Platform, Pressable, StyleSheet, Text, UIManager, View } from 'react-native';
-import { useTheme } from '../theme/ThemeProvider';
-import { curve, elevation, hairline, radius, space, type } from '../theme/tokens';
+import { LayoutAnimation, Platform, UIManager } from 'react-native';
+import { Box, Text, VStack, HStack, Pressable, Center } from '@gluestack-ui/themed';
+import { MotionButton } from './MotionButton';
 
 if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
   UIManager.setLayoutAnimationEnabledExperimental(true);
@@ -25,14 +25,20 @@ export type Notification = {
   unread?: boolean;
 };
 
+// Hardcoded theme colors
+const cardBg = '#1E2336';
+const textPrimary = '#F0F0F0';
+const textMuted = '#9CA3AF';
+const borderColor = '#2A314A';
+const accentColor = '#F2A93B';
+
 export function useCategoryStyle() {
-  const { colors } = useTheme();
   return {
-    crowd: { fg: colors.danger, bg: colors.dangerDim, glyph: '!', name: 'Crowd warning' },
-    haven: { fg: colors.safe, bg: colors.safeDim, glyph: 'H', name: 'Safe haven' },
-    network: { fg: colors.info, bg: colors.infoDim, glyph: '~', name: 'Network update' },
-    reroute: { fg: colors.accent, bg: colors.accentDim, glyph: '>', name: 'Reroute' },
-    reward: { fg: colors.reward, bg: colors.rewardDim, glyph: '*', name: 'Reward' },
+    crowd: { fg: '#ff4444', bg: 'rgba(255, 68, 68, 0.15)', glyph: '!', name: 'Crowd warning' },
+    haven: { fg: '#00C851', bg: 'rgba(0, 200, 81, 0.15)', glyph: 'H', name: 'Safe haven' },
+    network: { fg: '#33b5e5', bg: 'rgba(51, 181, 229, 0.15)', glyph: '~', name: 'Network update' },
+    reroute: { fg: accentColor, bg: 'rgba(242, 169, 59, 0.15)', glyph: '>', name: 'Reroute' },
+    reward: { fg: '#FFBB33', bg: 'rgba(255, 187, 51, 0.15)', glyph: '*', name: 'Reward' },
   } as Record<NotificationCategory, { fg: string; bg: string; glyph: string; name: string }>;
 }
 
@@ -43,7 +49,6 @@ export function NotificationCard({
   item: Notification;
   onAction?: (n: Notification) => void;
 }) {
-  const { colors } = useTheme();
   const cat = useCategoryStyle()[item.category];
   const [open, setOpen] = useState(false);
 
@@ -57,54 +62,63 @@ export function NotificationCard({
       onPress={toggle}
       accessibilityRole="button"
       accessibilityState={{ expanded: open }}
-      style={[
-        styles.card,
-        {
-          backgroundColor: colors.bgSurface,
-          borderColor: item.unread ? cat.fg : colors.borderSubtle,
-          borderLeftWidth: item.unread ? 3 : 1,
-        },
-      ]}
     >
-      <View style={styles.head}>
-        <View style={[styles.icon, { backgroundColor: cat.bg }]}>
-          <Text style={[type.h4, { color: cat.fg }]}>{cat.glyph}</Text>
-        </View>
+      <VStack
+        bg={cardBg}
+        borderRadius="$xl"
+        borderWidth={1}
+        borderLeftWidth={item.unread ? 4 : 1}
+        borderColor={item.unread ? cat.fg : borderColor}
+        p="$4"
+        space="md"
+        shadowColor="#000"
+        shadowOffset={{ width: 0, height: 5 }}
+        shadowOpacity={0.2}
+        shadowRadius={10}
+        elevation={5}
+      >
+        <HStack space="md" alignItems="flex-start">
+          <Center w={40} h={40} borderRadius="$lg" bg={cat.bg}>
+            <Text size="lg" fontWeight="$bold" color={cat.fg}>{cat.glyph}</Text>
+          </Center>
 
-        <View style={styles.copy}>
-          <View style={styles.titleRow}>
-            <Text style={[type.h4, { color: colors.textPrimary, flex: 1 }]} numberOfLines={2}>
-              {item.title}
+          <VStack flex={1} space="xs">
+            <HStack justifyContent="space-between" alignItems="flex-start">
+              <Text size="md" fontWeight="$bold" color={textPrimary} flex={1} numberOfLines={2}>
+                {item.title}
+              </Text>
+              <Text size="xs" color={textMuted} ml="$2">{item.time}</Text>
+            </HStack>
+            <Text
+              size="sm"
+              color={textMuted}
+              numberOfLines={open ? undefined : 1}
+            >
+              {item.summary}
             </Text>
-            <Text style={[type.caption, { color: colors.textMuted }]}>{item.time}</Text>
-          </View>
-          <Text
-            style={[type.bodySm, { color: colors.textSecondary }]}
-            numberOfLines={open ? undefined : 1}
-          >
-            {item.summary}
-          </Text>
-        </View>
-      </View>
+          </VStack>
+        </HStack>
 
-      {open ? (
-        <View style={styles.expanded}>
-          <View style={[styles.divider, { backgroundColor: colors.borderSubtle }]} />
-          <Text style={[type.bodySm, { color: colors.textSecondary }]}>{item.detail}</Text>
-          <Pressable
-            onPress={() => onAction?.(item)}
-            accessibilityRole="button"
-            style={[styles.action, { backgroundColor: cat.bg }]}
-          >
-            <Text style={[type.label, { color: cat.fg }]}>{item.action}</Text>
-          </Pressable>
-        </View>
-      ) : null}
+        {open ? (
+          <VStack space="md" mt="$2">
+            <Box h={1} bg={borderColor} />
+            <Text size="sm" color={textPrimary} lineHeight="$md">{item.detail}</Text>
+            
+            <HStack justifyContent="flex-end">
+              <MotionButton 
+                label={item.action}
+                color={cat.fg}
+                textColor="#161A28"
+                onPress={() => onAction?.(item)}
+              />
+            </HStack>
+          </VStack>
+        ) : null}
+      </VStack>
     </Pressable>
   );
 }
 
-/** Transient banner for live alerts. Design-only: parent controls visibility. */
 export function Toast({
   item,
   onDismiss,
@@ -112,71 +126,36 @@ export function Toast({
   item: Notification;
   onDismiss?: () => void;
 }) {
-  const { colors } = useTheme();
   const cat = useCategoryStyle()[item.category];
   return (
-    <View
-      style={[
-        styles.toast,
-        { backgroundColor: colors.bgElevated, borderColor: cat.fg },
-      ]}
+    <HStack
+      bg={cardBg}
+      borderRadius="$xl"
+      borderWidth={1}
+      borderColor={cat.fg}
+      overflow="hidden"
+      shadowColor="#000"
+      shadowOffset={{ width: 0, height: 10 }}
+      shadowOpacity={0.4}
+      shadowRadius={15}
+      elevation={15}
+      alignItems="center"
+      pr="$4"
     >
-      <View style={[styles.toastBar, { backgroundColor: cat.fg }]} />
-      <View style={{ flex: 1, gap: 2 }}>
-        <Text style={[type.h4, { color: colors.textPrimary }]} numberOfLines={1}>
+      <Box w={6} alignSelf="stretch" bg={cat.fg} />
+      <VStack flex={1} py="$3" px="$3" space="xs">
+        <Text size="sm" fontWeight="$bold" color={textPrimary} numberOfLines={1}>
           {item.title}
         </Text>
-        <Text style={[type.bodySm, { color: colors.textSecondary }]} numberOfLines={2}>
+        <Text size="xs" color={textMuted} numberOfLines={2}>
           {item.summary}
         </Text>
-      </View>
+      </VStack>
       <Pressable onPress={onDismiss} hitSlop={10} accessibilityRole="button">
-        <Text style={[type.h3, { color: colors.textMuted }]}>×</Text>
+        <Center w={30} h={30} borderRadius="$full" bg={borderColor}>
+          <Text size="md" color={textMuted}>×</Text>
+        </Center>
       </Pressable>
-    </View>
+    </HStack>
   );
 }
-
-const styles = StyleSheet.create({
-  card: {
-    borderRadius: radius.lg,
-    ...curve,
-    borderWidth: hairline,
-    padding: 16,
-    gap: 14,
-    ...elevation.low,
-  },
-  head: { flexDirection: 'row', gap: 12, alignItems: 'flex-start' },
-  icon: {
-    width: 40,
-    height: 40,
-    borderRadius: radius.sm,
-    ...curve,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  copy: { flex: 1, gap: 4 },
-  titleRow: { flexDirection: 'row', alignItems: 'flex-start', gap: space.sm },
-  expanded: { gap: 14 },
-  divider: { height: 1 },
-  action: {
-    alignSelf: 'flex-end',
-    paddingHorizontal: 14,
-    paddingVertical: 9,
-    borderRadius: radius.sm,
-    ...curve,
-  },
-  toast: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-    padding: 14,
-    paddingLeft: 0,
-    borderRadius: radius.lg,
-    ...curve,
-    borderWidth: hairline,
-    overflow: 'hidden',
-    ...elevation.high,
-  },
-  toastBar: { width: 4, alignSelf: 'stretch' },
-});

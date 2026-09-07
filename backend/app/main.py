@@ -19,11 +19,17 @@ logger = logging.getLogger("crovia.main")
 
 def _load_opted_in_devices() -> list[dict]:
 
+    # Placeholder sentinel fleet for the Lusail pilot. `tower_cell_id` now holds
+    # a district id from the shared geography file rather than a cell id — a
+    # device is not bound to one tower for the life of its subscription, and
+    # congestion notifications carry no location, so the district a reading gets
+    # attributed to has to be tracked separately per device.
     return [
-        {"phone_number": "+201001234567", "tower_cell_id": "tower_cairo_nac_001"},
-        {"phone_number": "+201001234568", "tower_cell_id": "tower_cairo_nac_001"},
-        {"phone_number": "+201001234569", "tower_cell_id": "tower_cairo_nac_002"},
-        {"phone_number": "+201001234570", "tower_cell_id": "tower_new_admin_001"},
+        {"phone_number": "+97430001001", "tower_cell_id": "district_stadium"},
+        {"phone_number": "+97430001002", "tower_cell_id": "district_stadium"},
+        {"phone_number": "+97430001003", "tower_cell_id": "district_foxhills"},
+        {"phone_number": "+97430001004", "tower_cell_id": "district_central"},
+        {"phone_number": "+97430001005", "tower_cell_id": "district_marina"},
     ]
 
 

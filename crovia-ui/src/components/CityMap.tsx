@@ -1,59 +1,46 @@
 import React from 'react';
-import { LayoutChangeEvent, StyleSheet, Text, View } from 'react-native';
+import { LayoutChangeEvent, Pressable, StyleSheet, Text, View } from 'react-native';
 import { useTheme } from '../theme/ThemeProvider';
-import { curve, radius, type } from '../theme/tokens';
-import { MapMarker, MarkerData } from './MapMarker';
+import { curve, radius as radiusToken, type } from '../theme/tokens';
+import {
+  city,
+  districtById,
+  fitBBox,
+  metersPerPixel,
+  project,
+  unproject,
+  zoneById,
+} from '../geo';
+import { MapMarker } from './MapMarker';
+import type { CityMapProps, Level } from './CityMap.types';
+
+export * from './CityMap.types';
 
 /**
- * A schematic stand-in for the live map surface. It draws the pilot city's
- * street armature, crowd density and pins so the rest of the UI can be
- * designed and reviewed. Swap the <View> canvas for MapLibre/Leaflet later —
- * the overlay children and marker API are meant to survive that change.
+ * Schematic fallback used on native, where MapLibre needs a config plan build.
+ * `CityMap.web.tsx` is the real map and Metro picks it automatically on web —
+ * this file is the default resolution, so it also keeps `tsc` happy for the
+ * screens that import from './CityMap'.
  *
- * All coordinates are 0–1 fractions of the canvas so the layout holds at
- * any screen size.
+ * It is schematic but no longer fictional: every circle is projected from the
+ * same lat/lon in `geo/lusail.geo.json` that the backend subscribes geofences
+ * against, and every radius is drawn to scale. The old version invented a
+ * street grid, which looked more finished and told you less.
  */
-
-export type DensityBlob = {
-  id: string;
-  x: number;
-  y: number;
-  /** radius as a fraction of canvas width */
-  r: number;
-  /** 1 = calm, 4 = critical */
-  level: 1 | 2 | 3 | 4;
-};
-
-export type Zone = {
-  id: string;
-  x: number;
-  y: number;
-  w: number;
-  h: number;
-  label: string;
-  level: 1 | 2 | 3 | 4;
-};
-
-type Props = {
-  markers?: MarkerData[];
-  blobs?: DensityBlob[];
-  zones?: Zone[];
-  activeMarkerId?: string | null;
-  onMarkerPress?: (m: MarkerData) => void;
-  /** draws the admin/police measurement grid */
-  showGrid?: boolean;
-  children?: React.ReactNode;
-};
 
 export function CityMap({
   markers = [],
   blobs = [],
+  districts = [],
   zones = [],
+  clusters = [],
   activeMarkerId,
   onMarkerPress,
+  onMapPress,
   showGrid,
+  showDistrictLabels = true,
   children,
-}: Props) {
+}: CityMapProps) {
   const { colors } = useTheme();
   const [size, setSize] = React.useState({ w: 0, h: 0 });
 
@@ -62,197 +49,220 @@ export function CityMap({
     setSize({ w: width, h: height });
   };
 
-  const densityColor = (level: number) =>
+  const fit = React.useMemo(
+    () => (size.w > 0 ? fitBBox(size.w, size.h) : null),
+    [size.w, size.h],
+  );
+
+  const mpp = fit ? metersPerPixel(fit.width) : 1;
+
+  /** lat/lon to a pixel inside the letterboxed frame. */
+  const toPx = React.useCallback(
+    (lat: number, lon: number) => {
+      if (!fit) return { x: 0, y: 0 };
+      const f = project({ lat, lon });
+      return { x: fit.x + f.x * fit.width, y: fit.y + f.y * fit.height };
+    },
+    [fit],
+  );
+
+  const densityColor = (level: Level) =>
     [colors.density1, colors.density2, colors.density3, colors.density4][level - 1];
 
-  // Street armature: fractions of the canvas.
-  const roadsH = [0.22, 0.42, 0.61, 0.79];
-  const roadsV = [0.18, 0.38, 0.58, 0.76, 0.92];
+  const handlePress = (e: any) => {
+    if (!onMapPress || !fit) return;
+    const { locationX, locationY } = e.nativeEvent;
+    onMapPress(
+      unproject({
+        x: (locationX - fit.x) / fit.width,
+        y: (locationY - fit.y) / fit.height,
+      }),
+    );
+  };
+
+  /** Absolutely-positioned circle of a true ground radius. */
+  const circleStyle = (lat: number, lon: number, radiusM: number) => {
+    const p = toPx(lat, lon);
+    const r = radiusM / mpp;
+    return { position: 'absolute' as const, left: p.x - r, top: p.y - r, width: r * 2, height: r * 2, borderRadius: r };
+  };
 
   return (
-    <View style={[styles.canvas, { backgroundColor: colors.mapLand }]} onLayout={onLayout}>
-      {/* Sea along the top edge — the pilot city is coastal */}
-      <View style={[styles.water, { backgroundColor: colors.mapWater }]} />
-      <Text style={[styles.waterLabel, type.caption, { color: colors.textMuted }]}>
-        Mediterranean
-      </Text>
+    <Pressable style={styles.canvas} onPress={handlePress} disabled={!onMapPress}>
+      <View style={[StyleSheet.absoluteFill, { backgroundColor: colors.mapLand }]} onLayout={onLayout}>
+        {/* The Gulf sits east of Lusail, so the water edge is on the right. */}
+        <View style={[styles.water, { backgroundColor: colors.mapWater }]} />
+        <Text style={[styles.waterLabel, type.caption, { color: colors.textMuted }]}>
+          ARABIAN GULF
+        </Text>
 
-      {/* City blocks */}
-      {size.w > 0 &&
-        roadsH.slice(0, -1).map((top, ri) =>
-          roadsV.slice(0, -1).map((left, ci) => (
-            <View
-              key={`b-${ri}-${ci}`}
-              style={{
-                position: 'absolute',
-                left: left * size.w + 4,
-                top: top * size.h + 4,
-                width: (roadsV[ci + 1] - left) * size.w - 8,
-                height: (roadsH[ri + 1] - top) * size.h - 8,
-                backgroundColor: colors.mapBlock,
-                borderRadius: 3,
-              }}
-            />
-          )),
-        )}
-
-      {/* Roads */}
-      {size.w > 0 &&
-        roadsH.map((f, i) => (
-          <View
-            key={`rh-${i}`}
-            style={{
-              position: 'absolute',
-              left: 0,
-              right: 0,
-              top: f * size.h,
-              height: i === 0 ? 6 : 3,
-              backgroundColor: colors.mapRoad,
-            }}
-          />
-        ))}
-      {size.w > 0 &&
-        roadsV.map((f, i) => (
-          <View
-            key={`rv-${i}`}
-            style={{
-              position: 'absolute',
-              top: 0,
-              bottom: 0,
-              left: f * size.w,
-              width: 3,
-              backgroundColor: colors.mapRoad,
-            }}
-          />
-        ))}
-
-      {/* Measurement grid, admin + police only */}
-      {showGrid && size.w > 0
-        ? [0.2, 0.4, 0.6, 0.8].map((f) => (
-            <React.Fragment key={`g-${f}`}>
-              <View
-                style={{
-                  position: 'absolute',
-                  left: 0,
-                  right: 0,
-                  top: f * size.h,
-                  height: 1,
-                  backgroundColor: colors.borderSubtle,
-                  opacity: 0.5,
-                }}
-              />
-              <View
-                style={{
-                  position: 'absolute',
-                  top: 0,
-                  bottom: 0,
-                  left: f * size.w,
-                  width: 1,
-                  backgroundColor: colors.borderSubtle,
-                  opacity: 0.5,
-                }}
-              />
-            </React.Fragment>
-          ))
-        : null}
-
-      {/* Crowd density — concentric rings stand in for a heat gradient */}
-      {size.w > 0 &&
-        blobs.map((b) => {
-          const R = b.r * size.w;
-          const tint = densityColor(b.level);
-          return (
-            <View key={b.id} pointerEvents="none">
-              {[1, 0.68, 0.4].map((scale, i) => (
+        {showGrid && fit
+          ? [0.2, 0.4, 0.6, 0.8].map((f) => (
+              <React.Fragment key={`g-${f}`}>
                 <View
-                  key={i}
                   style={{
                     position: 'absolute',
-                    left: b.x * size.w - R * scale,
-                    top: b.y * size.h - R * scale,
-                    width: R * 2 * scale,
-                    height: R * 2 * scale,
-                    borderRadius: R * scale,
-                    backgroundColor: tint,
-                    opacity: 0.12 + i * 0.09,
+                    left: fit.x,
+                    width: fit.width,
+                    top: fit.y + f * fit.height,
+                    height: 1,
+                    backgroundColor: colors.borderSubtle,
+                    opacity: 0.5,
                   }}
                 />
-              ))}
-            </View>
-          );
-        })}
+                <View
+                  style={{
+                    position: 'absolute',
+                    top: fit.y,
+                    height: fit.height,
+                    left: fit.x + f * fit.width,
+                    width: 1,
+                    backgroundColor: colors.borderSubtle,
+                    opacity: 0.5,
+                  }}
+                />
+              </React.Fragment>
+            ))
+          : null}
 
-      {/* Admin zone polygons */}
-      {size.w > 0 &&
-        zones.map((z) => {
-          const tint = densityColor(z.level);
-          return (
-            <View
-              key={z.id}
-              pointerEvents="none"
-              style={{
-                position: 'absolute',
-                left: z.x * size.w,
-                top: z.y * size.h,
-                width: z.w * size.w,
-                height: z.h * size.h,
-                borderWidth: 1.5,
-                borderColor: tint,
-                borderStyle: 'dashed',
-                borderRadius: radius.sm,
-    ...curve,
-                overflow: 'hidden',
-              }}
-            >
+        {/* Tier 1 districts */}
+        {fit &&
+          districts.map((o) => {
+            const d = districtById[o.id];
+            if (!d) return null;
+            const tint = densityColor(o.level);
+            const p = toPx(d.center.lat, d.center.lon);
+            return (
+              <View key={d.id} pointerEvents="none">
+                <View
+                  style={[
+                    circleStyle(d.center.lat, d.center.lon, d.radius_m),
+                    {
+                      borderWidth: o.armed ? 2 : 1,
+                      borderColor: tint,
+                      borderStyle: 'dashed',
+                      backgroundColor: tint,
+                      opacity: 0.5,
+                    },
+                  ]}
+                />
+                {showDistrictLabels ? (
+                  <Text
+                    style={[
+                      type.caption,
+                      {
+                        position: 'absolute',
+                        left: p.x - 50,
+                        top: p.y - 8,
+                        width: 100,
+                        textAlign: 'center',
+                        color: tint,
+                        fontWeight: '700',
+                        letterSpacing: 1,
+                      },
+                    ]}
+                    numberOfLines={1}
+                  >
+                    {d.short.toUpperCase()}
+                  </Text>
+                ) : null}
+              </View>
+            );
+          })}
+
+        {/* Density heat */}
+        {fit &&
+          blobs.map((b) => {
+            const tint = densityColor(b.level);
+            return (
+              <View key={b.id} pointerEvents="none">
+                {[1, 0.66, 0.38].map((scale, i) => (
+                  <View
+                    key={i}
+                    style={[
+                      circleStyle(b.lat, b.lon, b.radius_m * scale),
+                      { backgroundColor: tint, opacity: 0.1 + i * 0.08 },
+                    ]}
+                  />
+                ))}
+              </View>
+            );
+          })}
+
+        {/* Tier 2 bottleneck zones */}
+        {fit &&
+          zones.map((o) => {
+            const z = zoneById[o.id];
+            if (!z) return null;
+            const tint = densityColor(o.level);
+            return (
               <View
-                style={[StyleSheet.absoluteFill, { backgroundColor: tint, opacity: 0.14 }]}
-              />
-              <Text
+                key={z.id}
+                pointerEvents="none"
                 style={[
-                  type.caption,
+                  circleStyle(z.center.lat, z.center.lon, z.radius_m),
                   {
-                    color: colors.bgBase,
+                    borderWidth: o.armed ? 3 : 1.5,
+                    borderColor: tint,
                     backgroundColor: tint,
-                    alignSelf: 'flex-start',
-                    paddingHorizontal: 6,
-                    paddingVertical: 2,
-                    borderTopLeftRadius: radius.sm - 2,
-                    fontWeight: '700',
+                    opacity: 0.7,
+                    ...curve,
                   },
                 ]}
-              >
-                {z.label}
-              </Text>
-            </View>
-          );
-        })}
+              />
+            );
+          })}
 
-      {/* Pins */}
-      {size.w > 0 &&
-        markers.map((m) => (
-          <View
-            key={m.id}
-            style={{
-              position: 'absolute',
-              left: m.x * size.w - 20,
-              top: m.y * size.h - 20,
-            }}
-          >
-            <MapMarker
-              kind={m.kind}
-              active={activeMarkerId === m.id}
-              onPress={() => onMarkerPress?.(m)}
-            />
-          </View>
-        ))}
+        {/* Tier 3 clusters — outer ring is real positional uncertainty */}
+        {fit &&
+          clusters.map((c) => {
+            const tint = densityColor(c.level);
+            return (
+              <View key={c.id} pointerEvents="none">
+                <View
+                  style={[
+                    circleStyle(c.lat, c.lon, c.accuracy_m),
+                    { borderWidth: 1, borderColor: tint, borderStyle: 'dashed', opacity: 0.55 },
+                  ]}
+                />
+                <View
+                  style={[
+                    circleStyle(c.lat, c.lon, c.spread_m),
+                    { backgroundColor: tint, opacity: 0.4, borderWidth: 2, borderColor: tint },
+                  ]}
+                />
+              </View>
+            );
+          })}
 
-      {children}
-    </View>
+        {/* Pins */}
+        {fit &&
+          markers.map((m) => {
+            const p = toPx(m.lat, m.lon);
+            return (
+              <View key={m.id} style={{ position: 'absolute', left: p.x - 20, top: p.y - 20 }}>
+                <MapMarker
+                  kind={m.kind}
+                  active={activeMarkerId === m.id}
+                  onPress={() => onMarkerPress?.(m)}
+                />
+              </View>
+            );
+          })}
+
+        <Text style={[styles.schematic, type.caption, { color: colors.textMuted }]}>
+          {city.label} · schematic
+        </Text>
+
+        {children}
+      </View>
+    </Pressable>
   );
 }
 
 const styles = StyleSheet.create({
   canvas: { flex: 1, overflow: 'hidden' },
-  water: { position: 'absolute', left: 0, right: 0, top: 0, height: '14%' },
-  waterLabel: { position: 'absolute', top: 12, left: 16, letterSpacing: 1 },
+  water: { position: 'absolute', right: 0, top: 0, bottom: 0, width: '11%' },
+  waterLabel: { position: 'absolute', top: 14, right: 12, letterSpacing: 1 },
+  schematic: { position: 'absolute', left: 12, bottom: 10, letterSpacing: 0.6, opacity: 0.7 },
 });

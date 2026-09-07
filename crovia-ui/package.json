@@ -7,8 +7,11 @@
     "start": "expo start",
     "android": "expo start --android",
     "ios": "expo start --ios",
-    "web": "expo start --web",
-    "typecheck": "tsc --noEmit"
+    "web": "npm run sync:maplibre && expo start --web",
+    "typecheck": "tsc --noEmit",
+    "sync:maplibre": "node scripts/sync-maplibre-worker.mjs",
+    "postinstall": "node scripts/sync-maplibre-worker.mjs",
+    "build:web": "npm run sync:maplibre && expo export --platform web"
   },
   "dependencies": {
     "@expo-google-fonts/manrope": "^0.4.2",
@@ -16,9 +19,13 @@
     "@gluestack-style/react": "^1.0.57",
     "@gluestack-ui/config": "^1.1.20",
     "@gluestack-ui/themed": "^1.1.73",
+    "@turf/circle": "^7.4.0",
+    "@turf/helpers": "^7.4.0",
     "expo": "^57.0.0",
     "expo-font": "^57.0.3",
     "expo-status-bar": "~57.0.1",
+    "maplibre-gl": "^6.7.0",
+    "pmtiles": "^4.5.0",
     "react": "19.2.3",
     "react-dom": "19.2.3",
     "react-native": "0.86.3",
@@ -26,7 +33,8 @@
     "react-native-web": "^0.21.2"
   },
   "devDependencies": {
-    "@types/react": "~18.2.79",
-    "typescript": "~5.3.3"
+    "@types/react": "^19.2.18",
+    "puppeteer-core": "^24.43.1",
+    "typescript": "^5.9.3"
   }
 }

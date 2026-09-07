@@ -1,6 +1,8 @@
 from pydantic_settings import BaseSettings #to check the settings
-from typing import Dict, List # what type of data to expect 
+from typing import Dict, List # what type of data to expect
+import json # to read the shared geography file
 import os # to talk with the os
+from pathlib import Path # to locate that file relative to this one
 from dotenv import load_dotenv
 
 load_dotenv() # load from .env
@@ -37,51 +39,55 @@ class Settings(BaseSettings):
 
 settings = Settings()
 
-# dummy towers 
-# each tower has an assigned zones
+# Pilot geography.
+#
+# These used to be hand-written dummy coordinates, and they had drifted into a
+# different city from the one the app showed: the backend described Cairo and
+# the New Administrative Capital while the UI described a coastal pilot. Two
+# sets of coordinates for "the same" zones is the kind of mismatch that only
+# shows up when a geofence fires 400 km from the map, so there is now exactly
+# one source of truth and both sides read it.
+#
+# Canonical file: crovia-ui/src/geo/lusail.geo.json
+# It lives under the app because Metro bundles JSON from inside its own project
+# with no extra config, whereas Python can read any path on disk. Edit the
+# geography THERE, never here.
 
+_GEO_PATH = (
+    Path(__file__).resolve().parents[2] / "crovia-ui" / "src" / "geo" / "lusail.geo.json"
+)
+
+with _GEO_PATH.open(encoding="utf-8") as _f:
+    _GEO = json.load(_f)
+
+CITY: dict = _GEO["city"]
+
+# Tier 1. Congestion Insights carries no location of its own, so a device's
+# district has to come from somewhere else (a coarse geofence, or its last known
+# fix). This is the level congestion gets attributed to.
+DISTRICTS: Dict[str, dict] = {d["id"]: d for d in _GEO["districts"]}
+
+
+def _zone_row(zone: dict) -> dict:
+    """Flatten a zone into the shape the existing services already expect."""
+    return {
+        "zone_id": zone["id"],
+        "district_id": zone["district_id"],
+        "label": zone["label"],
+        "kind": zone["kind"],
+        "center_lat": zone["center"]["lat"],
+        "center_lon": zone["center"]["lon"],
+        "radius_m": zone["radius_m"],
+    }
+
+
+# Tier 2, grouped by their parent district. The name is kept for now so the
+# congestion accumulator and subscription manager keep working unchanged, but
+# the keys are district ids rather than cell ids: a phone is not bound to one
+# tower for the life of a subscription, which is what the old naming implied.
 TOWER_ZONE_MAP: Dict[str, List[dict]] = {
-    "tower_cairo_nac_001": [
-        {
-            "zone_id": "zone_stadium_east_exit",
-            "label": "Stadium east exit corridor",
-            "center_lat": 30.0626,
-            "center_lon": 31.2497,
-            "radius_m": 300,
-        },
-        {
-            "zone_id": "zone_market_north_alley",
-            "label": "North market alley entrance",
-            "center_lat": 30.0641,
-            "center_lon": 31.2511,
-            "radius_m": 250,
-        },
-    ],
-    "tower_cairo_nac_002": [
-        {
-            "zone_id": "zone_bridge_underpass",
-            "label": "Bridge underpass bottleneck",
-            "center_lat": 30.0558,
-            "center_lon": 31.2389,
-            "radius_m": 200,
-        },
-    ],
-    "tower_new_admin_001": [
-        {
-            "zone_id": "zone_gov_district_gate_a",
-            "label": "Government district gate A",
-            "center_lat": 30.0233,
-            "center_lon": 31.7362,
-            "radius_m": 400,
-        },
-        {
-            "zone_id": "zone_gov_district_gate_b",
-            "label": "Government district gate B",
-            "center_lat": 30.0219,
-            "center_lon": 31.7389,
-            "radius_m": 350,
-        },
-    ],
+    district_id: [_zone_row(z) for z in _GEO["zones"] if z["district_id"] == district_id]
+    for district_id in DISTRICTS
 }
 
 ZONE_CONFIG_MAP: Dict[str, dict] = {

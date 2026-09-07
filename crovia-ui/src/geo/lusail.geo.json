@@ -1,0 +1,148 @@
+{
+  "_readme": [
+    "CANONICAL GEOGRAPHY FOR THE CROVIA PILOT. Single source of truth.",
+    "Both the Expo app (src/geo/index.ts) and the FastAPI backend read THIS file.",
+    "Do not duplicate coordinates anywhere else.",
+    "",
+    "District and landmark anchors were verified against OpenStreetMap via",
+    "Nominatim rather than placed by eye. Zone centres are still positioned by",
+    "hand relative to those anchors, so nudge them against the basemap.",
+    "",
+    "Tier 1 districts drive Congestion Insights + coarse geofencing. Tier 2 zones",
+    "drive bottleneck geofencing (400-500 m, the practical floor before cell-level",
+    "accuracy turns them into noise). Tier 3 clusters are NOT defined here - they",
+    "are discovered at runtime by clustering Location Retrieval fixes.",
+    "",
+    "NOTE ON DISTRICT SIZE: Lusail's built core is compact - the stadium, the",
+    "Boulevard and the tram are all inside ~1.1 km of each other. Districts here",
+    "are therefore 800-1200 m rather than the 1-2 km that a sprawling city would",
+    "allow, and neighbouring districts overlap slightly at the edges. That is a",
+    "real constraint of the pilot city, not an oversight: attributing a congestion",
+    "reading to a district is correspondingly less certain where two districts",
+    "overlap, and the agent should treat those margins as lower confidence."
+  ],
+
+  "city": {
+    "id": "lusail",
+    "name": "Lusail",
+    "country": "Qatar",
+    "label": "Lusail · Qatar",
+    "sublabel": "Smart city pilot · match-day egress",
+    "timezone": "Asia/Qatar",
+    "center": { "lat": 25.412, "lon": 51.506 },
+    "bbox": [51.475, 25.37, 51.545, 25.445],
+    "defaultZoom": 12.8,
+    "minZoom": 11,
+    "maxZoom": 17
+  },
+
+  "districts": [
+    {
+      "id": "district_stadium",
+      "label": "Stadium Precinct",
+      "short": "Stadium",
+      "center": { "lat": 25.416, "lon": 51.494 },
+      "radius_m": 1200,
+      "anchor": "Lusail Stadium",
+      "capacity_hint": 88966,
+      "notes": "Stadium, Boulevard and tram terminus all sit inside this one district because they are within ~1.1 km of each other. Match-day egress is the pilot's primary crowd driver."
+    },
+    {
+      "id": "district_foxhills",
+      "label": "Fox Hills",
+      "short": "Fox Hills",
+      "center": { "lat": 25.4275, "lon": 51.5043 },
+      "radius_m": 800,
+      "anchor": "Fox Hills",
+      "capacity_hint": null,
+      "notes": "Residential towers north-east of the stadium. Absorbs pedestrian overflow on foot."
+    },
+    {
+      "id": "district_central",
+      "label": "Lusail Central",
+      "short": "Central",
+      "center": { "lat": 25.4229, "lon": 51.5197 },
+      "radius_m": 1100,
+      "anchor": "Lusail city centre",
+      "capacity_hint": null,
+      "notes": "Commercial core. Steady all-day density rather than event spikes."
+    },
+    {
+      "id": "district_marina",
+      "label": "Marina Waterfront",
+      "short": "Marina",
+      "center": { "lat": 25.3824, "lon": 51.5271 },
+      "radius_m": 1000,
+      "anchor": "Lusail Marina",
+      "capacity_hint": null,
+      "notes": "Waterfront dining and promenade well south of the stadium. Sustained evening density, not spiky."
+    }
+  ],
+
+  "zones": [
+    {
+      "id": "zone_stadium_north_concourse",
+      "district_id": "district_stadium",
+      "label": "Stadium north concourse",
+      "kind": "egress_gate",
+      "center": { "lat": 25.424, "lon": 51.4904 },
+      "radius_m": 450,
+      "notes": "Primary egress fan out of the stadium. Highest crush risk in the pilot."
+    },
+    {
+      "id": "zone_boulevard_south_entry",
+      "district_id": "district_stadium",
+      "label": "Boulevard south entry",
+      "kind": "pedestrian_corridor",
+      "center": { "lat": 25.4157, "lon": 51.4966 },
+      "radius_m": 400,
+      "notes": "Narrow entry onto Lusail Boulevard. Accumulates once the promenade is full."
+    },
+    {
+      "id": "zone_stadium_tram_link",
+      "district_id": "district_stadium",
+      "label": "Stadium tram link",
+      "kind": "transit",
+      "center": { "lat": 25.4113, "lon": 51.4948 },
+      "radius_m": 400,
+      "notes": "Lusail Tram terminus. Funnels stadium egress onto rail; platform capacity is the constraint."
+    },
+    {
+      "id": "zone_foxhills_crossing",
+      "district_id": "district_foxhills",
+      "label": "Fox Hills crossing",
+      "kind": "crossing",
+      "center": { "lat": 25.4265, "lon": 51.503 },
+      "radius_m": 400,
+      "notes": "Signalised crossing on the walking route out of the precinct. Pedestrians pool between phases."
+    },
+    {
+      "id": "zone_central_plaza_crossing",
+      "district_id": "district_central",
+      "label": "Central plaza crossing",
+      "kind": "crossing",
+      "center": { "lat": 25.4235, "lon": 51.517 },
+      "radius_m": 400,
+      "notes": "Main pedestrian crossing in the commercial core."
+    },
+    {
+      "id": "zone_marina_promenade",
+      "district_id": "district_marina",
+      "label": "Marina promenade",
+      "kind": "pedestrian_corridor",
+      "center": { "lat": 25.383, "lon": 51.5255 },
+      "radius_m": 450,
+      "notes": "Waterfront walk. Water on one side means egress is single-sided."
+    }
+  ],
+
+  "landmarks": [
+    { "id": "lm_stadium", "label": "Lusail Stadium", "lat": 25.4208, "lon": 51.4904 },
+    { "id": "lm_boulevard", "label": "Lusail Boulevard", "lat": 25.4157, "lon": 51.4966 },
+    { "id": "lm_tram", "label": "Lusail Tram", "lat": 25.4113, "lon": 51.4948 },
+    { "id": "lm_foxhills", "label": "Fox Hills", "lat": 25.4275, "lon": 51.5043 },
+    { "id": "lm_central", "label": "Lusail centre", "lat": 25.4229, "lon": 51.5197 },
+    { "id": "lm_qetaifan", "label": "Qetaifan Island North", "lat": 25.4315, "lon": 51.5279 },
+    { "id": "lm_marina", "label": "Lusail Marina", "lat": 25.3824, "lon": 51.5271 }
+  ]
+}

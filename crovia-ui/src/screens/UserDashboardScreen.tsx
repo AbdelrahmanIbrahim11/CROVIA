@@ -16,7 +16,7 @@ import { MarkerData } from '../components/MapMarker';
 import { Toast } from '../components/NotificationCard';
 import { StatusChip } from '../components/StatusChip';
 import { MotionButton } from '../components/MotionButton';
-import { blobs, markers, notifications, REGION, REGION_SUB } from '../data';
+import { blobs, clusters, markers, notifications, REGION, REGION_SUB } from '../data';
 
 const bgColor = '#161A28';
 const accentColor = '#F2A93B';
@@ -53,6 +53,7 @@ export function UserDashboardScreen({
         <CityMap
           markers={markers}
           blobs={blobs}
+          clusters={clusters}
           activeMarkerId={selected?.id}
           onMarkerPress={setSelected}
         >

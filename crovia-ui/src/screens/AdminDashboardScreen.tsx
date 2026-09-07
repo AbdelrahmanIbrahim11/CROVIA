@@ -5,7 +5,15 @@ import { AppHeader, Metric, Sheet } from '../components/Chrome';
 import { CityMap } from '../components/CityMap';
 import { StatusChip } from '../components/StatusChip';
 import { MotionButton } from '../components/MotionButton';
-import { blobs, markers, REGION, zoneRows, zones } from '../data';
+import {
+  blobs,
+  clusters,
+  districtOverlays,
+  markers,
+  REGION,
+  zoneOverlays,
+  zoneRows,
+} from '../data';
 
 type Tool = null | 'draw' | 'reroute' | 'measure';
 
@@ -46,13 +54,20 @@ export function AdminDashboardScreen({
     <VStack flex={1} bg={bgColor}>
       <AppHeader
         region={REGION}
-        subtitle={`${roleLabel} · 4 zones monitored`}
+        subtitle={`${roleLabel} · ${zoneOverlays.length} zones monitored`}
         unread={3}
         onSettings={() => setSettingsOpen(true)}
       />
 
       <Box flex={1}>
-        <CityMap markers={markers} blobs={blobs} zones={zones} showGrid>
+        <CityMap
+          markers={markers}
+          blobs={blobs}
+          districts={districtOverlays}
+          zones={zoneOverlays}
+          clusters={clusters}
+          showGrid
+        >
           {/* Editor toolbar */}
           <VStack
             position="absolute"

@@ -3,18 +3,14 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { useTheme } from '../theme/ThemeProvider';
 import { type } from '../theme/tokens';
 
-export type MarkerKind = 'haven' | 'facility' | 'contact' | 'crowd' | 'you';
+import type { MarkerKind } from './CityMap.types';
 
-export type MarkerData = {
-  id: string;
-  kind: MarkerKind;
-  /** 0–1 position within the map canvas */
-  x: number;
-  y: number;
-  name: string;
-  detail: string;
-  distance: string;
-};
+/**
+ * Marker shapes live in CityMap.types so both map implementations and the data
+ * layer agree on one definition. Re-exported here because screens already
+ * import them from this module.
+ */
+export type { MarkerKind, MarkerData } from './CityMap.types';
 
 const glyphs: Record<MarkerKind, string> = {
   haven: 'H',

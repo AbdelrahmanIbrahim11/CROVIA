@@ -18,3 +18,4 @@ pip-selfcheck.json
 [Ll]ib64
 [Ll]ocal
 [Ss]cripts
+/crovia-ui/node_modules

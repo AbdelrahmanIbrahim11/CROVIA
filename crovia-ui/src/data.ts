@@ -107,7 +107,6 @@ export const districtOverlays: DistrictOverlay[] = [
 export const zoneOverlays: ZoneOverlay[] = [
   { id: 'zone_stadium_north_concourse', level: 4, armed: true },
   { id: 'zone_stadium_tram_link', level: 3, armed: true },
-  { id: 'zone_boulevard_south_entry', level: 2 },
   { id: 'zone_foxhills_crossing', level: 2 },
   { id: 'zone_central_plaza_crossing', level: 1 },
   { id: 'zone_marina_promenade', level: 1 },
@@ -192,6 +191,6 @@ export const notifications: Notification[] = [
 export const zoneRows = [
   { id: 'zone_stadium_north_concourse', score: 78, heads: '2,400', level: 'critical' as const },
   { id: 'zone_stadium_tram_link', score: 61, heads: '1,480', level: 'elevated' as const },
-  { id: 'zone_boulevard_south_entry', score: 34, heads: '620', level: 'watch' as const },
-  { id: 'zone_foxhills_crossing', score: 12, heads: '210', level: 'calm' as const },
+  { id: 'zone_foxhills_crossing', score: 34, heads: '620', level: 'watch' as const },
+  { id: 'zone_central_plaza_crossing', score: 12, heads: '210', level: 'calm' as const },
 ].map((r) => ({ ...r, name: zoneById[r.id]?.label ?? r.id }));

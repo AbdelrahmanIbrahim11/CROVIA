@@ -63,10 +63,73 @@ export type BottleneckZone = {
 
 export type Landmark = { id: string; label: string; lat: number; lon: number };
 
-export const city: City = raw.city as City;
+/**
+ * A walkable link inside a zone. Width is the number that matters: it decides
+ * how many people per minute can pass. Length only decides how many fit.
+ * Offsets are metres east/north from the zone centre.
+ */
+export type Segment = {
+  id: string;
+  label: string;
+  offsets: [number, number][];
+  width_m: number;
+  /** Hostile geometry multiplier: funnel, dead end, water on one side. */
+  risk: number;
+  drains_to: string | null;
+};
+
+export type Constants = {
+  peak_specific_flow_p_per_m_per_s: number;
+  capacity_per_m_width_per_min: number;
+  density_critical_p_per_m2: number;
+  density_jam_p_per_m2: number;
+  free_walk_speed_m_per_s: number;
+  min_zone_radius_m: number;
+};
+
+const M_PER_DEG_LAT = 110_540;
+const M_PER_DEG_LON_EQ = 111_320;
+
+export const city: City = raw.city as unknown as City;
 export const districts: District[] = raw.districts as District[];
 export const zones: BottleneckZone[] = raw.zones as BottleneckZone[];
 export const landmarks: Landmark[] = raw.landmarks as Landmark[];
+export const constants: Constants = raw.constants as Constants;
+
+/** Segments grouped by the zone they belong to. */
+export const segmentsByZone: Record<string, Segment[]> =
+  raw.segments as unknown as Record<string, Segment[]>;
+
+/**
+ * How many people per minute a link of this width can pass.
+ * Peak pedestrian flow is about 1.2 people per metre of width per second.
+ */
+export function capacityPerMinute(width_m: number): number {
+  return width_m * constants.capacity_per_m_width_per_min;
+}
+
+/**
+ * The narrowest link in a zone. This is the place that fails first, and it
+ * comes from the city plan — no measurement needed, which matters because the
+ * network cannot resolve a 9 m ramp anyway.
+ */
+export function bottleneckOf(zoneId: string): Segment | null {
+  const segs = segmentsByZone[zoneId];
+  if (!segs || segs.length === 0) return null;
+  return segs.reduce((a, b) => (b.width_m < a.width_m ? b : a));
+}
+
+/** Absolute position of a segment offset, in lat/lon. */
+export function segmentPath(zoneId: string, seg: Segment): LatLon[] {
+  const z = zoneById[zoneId];
+  if (!z) return [];
+  const mPerDegLat = M_PER_DEG_LAT;
+  const mPerDegLon = M_PER_DEG_LON_EQ * Math.cos((z.center.lat * Math.PI) / 180);
+  return seg.offsets.map(([dx, dy]) => ({
+    lat: z.center.lat + dy / mPerDegLat,
+    lon: z.center.lon + dx / mPerDegLon,
+  }));
+}
 
 export const districtById: Record<string, District> = Object.fromEntries(
   districts.map((d) => [d.id, d]),

@@ -8,7 +8,7 @@ import re
 
 class normal_user(base):
     __tablename__ = "normal_users"
-    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4())
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     username = Column(String(80), nullable=False, unique=True)
     password = Column(String(255), nullable=False)
     email = Column(String(120), nullable=False)
@@ -25,7 +25,7 @@ class normal_user(base):
 
 class admin_user(base):
     __tablename__ = "admin_users"
-    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4())
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     username = Column(String(80), nullable=False, unique=True)
     password = Column(String(255), nullable=False)
     email = Column(String(120), nullable=False)
@@ -41,7 +41,7 @@ class admin_user(base):
 
 class authority_user(base):
     __tablename__ = "authority_users"
-    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4())
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     username = Column(String(80), nullable=False, unique=True)
     password = Column(String(255), nullable=False)
     email = Column(String(120), nullable=False)
@@ -53,3 +53,106 @@ class authority_user(base):
         if not bool(re.fullmatch(pattern=pattern, string=value)):
             raise ValueError("Error: Email is not in correct format")
         return value
+
+
+# ---------------------------------------------------------------------------
+# Crowd-safety tables
+# ---------------------------------------------------------------------------
+# Added so the detection engine survives a restart. Until now the engine held
+# which phones it was watching in memory only, so every restart forgot every
+# enrolled person and the system silently monitored nobody.
+
+from sqlalchemy import Boolean, DateTime, Float, ForeignKey, Integer, Text
+from datetime import datetime, timezone
+
+
+class device_consent(base):
+    """
+    A person's permission to be monitored, and the record of them taking it back.
+
+    Nokia does not require consent in the sandbox, but nothing may be enrolled
+    without a row here anyway. Location data about a named person is the whole
+    legal weight of this product, and a consent table that only appears at
+    production time is a consent table nobody designed.
+    """
+
+    __tablename__ = "device_consent"
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    phone_number = Column(String(30), nullable=False, unique=True)
+    # Everything outside this table refers to the device by hash only.
+    hashed_id = Column(String(32), nullable=False, unique=True, index=True)
+    granted_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+    revoked_at = Column(DateTime(timezone=True), nullable=True)
+    # What they agreed to: "safety_monitoring" today, room for more later.
+    scope = Column(String(60), nullable=False, default="safety_monitoring")
+
+    @property
+    def active(self) -> bool:
+        return self.revoked_at is None
+
+    @validates("phone_number")
+    def validate_phone(self, key, value):
+        if not re.fullmatch(r"^\+?[0-9]{5,15}$", value or ""):
+            raise ValueError("Error: phone number must be 5-15 digits, optionally starting with +")
+        return value
+
+
+class monitored_device(base):
+    """
+    A device the engine is currently watching, and in which role.
+
+    SENTINEL devices carry congestion subscriptions and district geofences.
+    They are deliberately unbalanced, since more are enrolled where an event is
+    expected, which makes them good at locating a crowd and biased at counting
+    one.
+
+    PANEL devices are a uniform random sample of all app users. Too thin to
+    locate anything, but their share of the population is known exactly, so the
+    fraction of the panel inside a zone is an unbiased estimate of the fraction
+    of the city inside it. Only the panel is ever used for headcounts.
+    """
+
+    __tablename__ = "monitored_devices"
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    hashed_id = Column(String(32), nullable=False, unique=True, index=True)
+    role = Column(String(20), nullable=False, default="sentinel")   # sentinel | panel
+    district_id = Column(String(60), nullable=True)
+    last_seen_at = Column(DateTime(timezone=True), nullable=True)
+    active = Column(Boolean, nullable=False, default=True)
+    enrolled_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+
+
+class subscription_record(base):
+    """
+    Every live CAMARA subscription, so they can be torn down after a restart.
+
+    Without this the system leaks: a restart forgets the subscription ids, the
+    subscriptions stay alive at the operator, and they keep being billed with
+    nothing listening to them.
+    """
+
+    __tablename__ = "subscription_records"
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    subscription_id = Column(String(120), nullable=False, unique=True, index=True)
+    hashed_id = Column(String(32), nullable=False, index=True)
+    kind = Column(String(20), nullable=False)      # congestion | district | zone
+    area_id = Column(String(60), nullable=True)
+    created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+    expires_at = Column(DateTime(timezone=True), nullable=True)
+    alive = Column(Boolean, nullable=False, default=True)
+
+
+class incident(base):
+    """A recorded alarm, kept so baselines can be built from real history."""
+
+    __tablename__ = "incidents"
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    zone_id = Column(String(60), nullable=False, index=True)
+    segment_id = Column(String(60), nullable=True)
+    started_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+    ended_at = Column(DateTime(timezone=True), nullable=True)
+    people_low = Column(Integer, nullable=True)
+    people_high = Column(Integer, nullable=True)
+    pinch_density = Column(Float, nullable=True)
+    fired_by = Column(String(40), nullable=True)
+    reason = Column(Text, nullable=True)

@@ -270,6 +270,24 @@ class Engine:
             else:
                 self.registry.remove_from(hashed, area)
 
+    def on_subscription_end(self, sub_id: str) -> None:
+        """
+        A subscription has expired or been terminated at the operator.
+
+        This has to be visible, because the failure it causes is silent: events
+        for that device simply stop arriving, and a city with no events looks
+        exactly like a calm one. The binding is dropped so the device is no
+        longer counted as located, which at least makes the loss measurable.
+        """
+        hashed = self.registry.sub_device.pop(sub_id, None)
+        kind = self.registry.sub_kind.pop(sub_id, None)
+        area = self.registry.sub_area.pop(sub_id, None)
+        if hashed and kind == "district" and area:
+            self.registry.remove_from(hashed, area)
+        self.log("subscription_end",
+                 f"{kind or 'unknown'} subscription ended for area {area or '-'} - "
+                 "that device is no longer reporting", sub_id=sub_id)
+
     def _prune(self, window_s: float = 900.0) -> None:
         cut = self.now - window_s
         for st in self.districts.values():

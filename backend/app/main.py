@@ -1,19 +1,34 @@
+"""
+CROVIA backend.
+
+Brings up three things that used to exist separately: the user database, the
+detection engine, and the CAMARA notification endpoints. The engine previously
+ran only inside the simulation, while the webhooks still called the earlier
+services, so the running system was executing a design that had been replaced.
+"""
+
+from __future__ import annotations
+
 import asyncio
+import contextlib
 import logging
+import os
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, Depends, HTTPException, status, Response
-
-from app.db.redis import get_redis, close_redis
-from app.services.subscription_manager import bootstrap_subscriptions
-from app.api.webhooks import router as webhook_router
-from app.services.location_retrieval import location_retrieval_listener
-from app.usersDB.db import create_table, getdb
-from app.usersDB.schemas import admin_user, normal_user, authority_user
-from app.usersDB.dto import user_dto
-from app.respones.responses import UserResponse
+from fastapi import Depends, FastAPI, HTTPException, Response, status
+from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
+
+from app.api.state import router as state_router
+from app.api.webhooks import router as webhook_router
+from app.core.city import city
+from app.db.redis import close_redis, get_redis
+from app.respones.responses import UserResponse
+from app.runtime import get_engine
+from app.services import enrollment
 from app.usersDB import services as dbServices
+from app.usersDB.db import create_table, getdb
+from app.usersDB.dto import user_dto
 
 logging.basicConfig(
     level=logging.INFO,
@@ -21,144 +36,129 @@ logging.basicConfig(
 )
 logger = logging.getLogger("crovia.main")
 
+TICK_SECONDS = float(os.getenv("ENGINE_TICK_SECONDS", "30"))
 
-def _load_opted_in_devices() -> list[dict]:
 
-    # Placeholder sentinel fleet for the Lusail pilot. `tower_cell_id` now holds
-    # a district id from the shared geography file rather than a cell id — a
-    # device is not bound to one tower for the life of its subscription, and
-    # congestion notifications carry no location, so the district a reading gets
-    # attributed to has to be tracked separately per device.
-    return [
-        {"phone_number": "+97430001001", "tower_cell_id": "district_stadium"},
-        {"phone_number": "+97430001002", "tower_cell_id": "district_stadium"},
-        {"phone_number": "+97430001003", "tower_cell_id": "district_foxhills"},
-        {"phone_number": "+97430001004", "tower_cell_id": "district_central"},
-        {"phone_number": "+97430001005", "tower_cell_id": "district_marina"},
-    ]
+async def _engine_loop() -> None:
+    """
+    Drive the engine on a fixed beat.
+
+    Notifications arrive whenever the network sends them, but deciding what to
+    spend has to happen on a rhythm of its own, otherwise a quiet city would
+    never be reassessed and a busy one would be reassessed on every packet.
+    """
+    engine = get_engine()
+    while True:
+        try:
+            engine.tick()
+        except Exception:
+            logger.exception("engine tick failed")
+        await asyncio.sleep(TICK_SECONDS)
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-
-    logger.info("Initializing database tables...")
-
+    logger.info("creating database tables")
     try:
         create_table()
-    except Exception as e:
-        logger.error("Failed to initialize database: %s", e, exc_info=True)
-        raise e
+    except Exception as exc:
+        logger.error("database unavailable: %s", exc)
 
-    logger.info("creating Nokia NaC subscriptions")
+    engine = get_engine()
 
-    redis = await get_redis()
-    devices = _load_opted_in_devices()
-
-    # Start the location retrieval Redis listener in the background
-    listener_task = asyncio.create_task(location_retrieval_listener(redis))
-
+    # Rebuild who is being watched from the database. Without this the engine
+    # comes back up monitoring nobody while still looking healthy.
     try:
-        results = await bootstrap_subscriptions(redis, devices)
-        logger.info(
-            "Subscriptions created: %d congestion, %d geofencing, %d errors",
-            len(results["congestion"]),
-            len(results["geofencing"]),
-            len(results["errors"]),
-        )
-        if results["errors"]:
-            for err in results["errors"]:
-                logger.error("Subscription error: %s", err)
-    except Exception as e:
-        logger.error("Failed to bootstrap subscriptions: %s", e, exc_info=True)
+        db = next(getdb())
+        try:
+            loaded = enrollment.load_into_registry(db, engine.registry)
+            logger.info("restored %d sentinels and %d panel devices from the database",
+                        loaded["sentinels"], loaded["panel"])
+        finally:
+            db.close()
+    except Exception as exc:
+        logger.warning("could not restore monitored devices: %s", exc)
 
+    logger.info("city: %s, %d districts, %d zones",
+                city.meta["label"], len(city.districts), len(city.zones))
+
+    task = asyncio.create_task(_engine_loop())
     yield
 
-    logger.info("Cancelling background tasks...")
-    listener_task.cancel()
-    try:
-        await listener_task
-    except asyncio.CancelledError:
-        pass
-
+    task.cancel()
+    with contextlib.suppress(asyncio.CancelledError):
+        await task
     await close_redis()
-    logger.info("Crovia shutting down.")
+    logger.info("crovia shutting down")
 
 
 app = FastAPI(
-    title="Crovia — Dual-Trigger Pipeline",
-    description="Webhook backend for Nokia NaC congestion + geofencing lead to Location Retrieval trigger",
-    version="0.1.0",
+    title="CROVIA",
+    description="Crowd safety from telecom network signals",
+    version="0.2.0",
     lifespan=lifespan,
 )
 
+# The Expo app runs from a different origin in development.
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=os.getenv("CORS_ORIGINS", "*").split(","),
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
 app.include_router(webhook_router)
+app.include_router(state_router)
 
 
 @app.get("/health")
 async def health():
-    redis = await get_redis()
+    engine = get_engine()
     try:
+        redis = await get_redis()
         await redis.ping()
         redis_ok = True
     except Exception:
         redis_ok = False
-    return {"status": "ok", "redis": redis_ok}
+    return {
+        "status": "ok",
+        "redis": redis_ok,
+        "city": city.meta["label"],
+        "monitored": {
+            "total": len(engine.registry.sentinels),
+            "panel": engine.registry.panel_size(),
+            "located": len(engine.registry.device_district),
+        },
+        "calls_spent": engine.ledger.total,
+    }
 
+
+# ---------------------------------------------------------------------------
+# Accounts
+# ---------------------------------------------------------------------------
 
 @app.post("/signin", response_model=UserResponse)
 def signin(user_Data: user_dto, db: Session = Depends(getdb)):
-    user = None
-    if not dbServices.signin_existing_mail(db=db, email=user_Data.email):
-        if user_Data.user_type == "normal":
-            normaluser = {
-                "username": {user_Data.username},
-                "password": {user_Data.password},
-                "email": {user_Data.email},
-                "number": {user_Data.number},
-            }
-            user = dbServices.create_user(
-                db=db, userdata=normaluser, user_role="normal"
-            )
-        elif user_Data.user_type == "admin":
-            adminuser = {
-                "username": {user_Data.username},
-                "password": {user_Data.password},
-                "email": {user_Data.email},
-            }
-            user = dbServices.create_user(db=db, userdata=adminuser, user_role="admin")
-        elif user_Data.user_type == "authority":
-            authorityuser = {
-                "username": {user_Data.username},
-                "password": {user_Data.password},
-                "email": {user_Data.email},
-            }
-            user = dbServices.create_user(
-                db=db, userdata=authorityuser, user_role="admin"
-            )
+    if dbServices.signin_existing_mail(db=db, email=user_Data.email):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST,
+                            detail="The email already exists!")
 
-        if user:
-            return UserResponse(
-                username=str(user.username),
-                email=str(user.email),
-            )
-        else:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST, detail="An error occured!"
-            )
-    else:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST, detail="The email already exists!"
-        )
+    fields = {"username": user_Data.username, "password": user_Data.password,
+              "email": user_Data.email}
+    if user_Data.user_type == "normal":
+        fields["number"] = user_Data.number
+    role = "normal" if user_Data.user_type == "normal" else "admin"
+    user = dbServices.create_user(db=db, userdata=fields, user_role=role)
+    if not user:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="An error occured!")
+
+    return UserResponse(username=str(user.username), email=str(user.email))
 
 
 @app.get("/login", response_model=UserResponse)
 def login(user_Data: user_dto, db: Session = Depends(getdb)):
-    if dbServices.verify_user(
-        db=db, userdata=user_Data.model_dump(), user_role=user_Data.user_type
-    ):
-        return Response(
-            content=UserResponse(username=user_Data.username, email=user_Data.email),
-            status_code=200,
-        )
-    else:
-        return Response(content=None, status_code=status.HTTP_404_NOT_FOUND)
+    if not dbServices.verify_user(db=db, userdata=user_Data.model_dump(),
+                                  user_role=user_Data.user_type):
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Not found")
+    return UserResponse(username=user_Data.username, email=user_Data.email)

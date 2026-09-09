@@ -163,12 +163,12 @@ class Budget:
         out: dict[str, int] = {}
         for r in sorted(requests, key=lambda r: r.priority(), reverse=True):
             if pot <= 0:
-                out[r.district_id] = 0
+                out[r.zone_id] = 0
                 continue
             # Never fund less than a third of what was asked for; below that the
             # sample is too small to conclude anything.
             floor = max(1, r.calls_wanted // 3)
             grant = min(r.calls_wanted, pot)
-            out[r.district_id] = grant if grant >= floor else 0
-            pot -= out[r.district_id]
+            out[r.zone_id] = grant if grant >= floor else 0
+            pot -= out[r.zone_id]
         return out

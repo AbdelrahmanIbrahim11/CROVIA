@@ -22,6 +22,7 @@ other's evidence.
 
 from __future__ import annotations
 
+import random
 import time
 from collections import defaultdict, deque
 from dataclasses import dataclass, field
@@ -44,21 +45,81 @@ class ZoneState:
     last_verdict: Verdict | None = None
     last_checked: float = 0.0
     unresolved_since: float | None = None
+    alerted: bool = False
+    next_check_at: float = 0.0
+    consecutive_high: int = 0
+
+    # How far back the fill rate looks. Long enough to be steady, short enough
+    # to still be about now.
+    RATE_MIN_SPAN_S = 120.0
+    RATE_MAX_SPAN_S = 420.0
 
     def rate_per_min(self) -> float:
-        """Change in the panel headcount, in real people per minute."""
+        """
+        How fast the headcount is changing, in real people per minute.
+
+        Measured over a short recent window, not the whole history. Averaging
+        across every sample ever taken smooths a surge into nothing: with five
+        minutes between samples and thirty samples kept, the window stretched to
+        two and a half hours and a crush that built in ten minutes never showed
+        up as a rate at all.
+        """
         if len(self.counts) < 2:
             return 0.0
-        (t0, p0), (t1, p1) = self.counts[0], self.counts[-1]
-        span = t1 - t0
-        if span < 120:
+        t_now = self.counts[-1][0]
+        window = [(t, p) for t, p in self.counts if t_now - t <= self.RATE_MAX_SPAN_S]
+        if len(window) < 2 or (t_now - window[0][0]) < self.RATE_MIN_SPAN_S:
             return 0.0
-        return (p1 - p0) / (span / 60.0)
+        # Least-squares slope across the window, rather than the difference
+        # between the first and last points.
+        #
+        # Each counted device stands for hundreds of people, so a single sample
+        # lands on a coarse grid and two samples can differ by that step size
+        # purely by chance. Taking the difference of two noisy endpoints turned
+        # that noise straight into a fake rate; a slope through every point in
+        # the window averages it out instead.
+        n = len(window)
+        mt = sum(t for t, _ in window) / n
+        mp = sum(p for _, p in window) / n
+        num = sum((t - mt) * (p - mp) for t, p in window)
+        den = sum((t - mt) ** 2 for t, _ in window)
+        if den <= 0:
+            return 0.0
+        return (num / den) * 60.0
 
     def span_s(self) -> float:
         if len(self.counts) < 2:
             return 0.0
         return self.counts[-1][0] - self.counts[0][0]
+
+
+@dataclass
+class ScheduledEvent:
+    """
+    A crowd we know about in advance: a match, a concert, a prayer time.
+
+    This is the earliest and cheapest trigger there is, because it costs no API
+    calls at all. It matters more than it first appears: congestion is pushed
+    every few minutes per device, so by the time enough devices have reported
+    for a district to look unusual, a stadium crowd has already formed. In
+    testing, the first count landed at t=905 s with 13,000 people already in the
+    zone — the fill had happened entirely unobserved. Watching from before the
+    doors open is what turns this from a late report into a warning.
+    """
+
+    zone_id: str
+    starts_at: float
+    expected_attendance: int
+    duration_s: float = 12 * 60.0
+    lead_s: float = 30 * 60.0
+    label: str = ""
+
+    def expected_inflow_per_min(self) -> float:
+        """People per minute this event will send at the zone."""
+        return self.expected_attendance / max(self.duration_s / 60.0, 1.0)
+
+    def active(self, now: float) -> bool:
+        return (self.starts_at - self.lead_s) <= now <= (self.starts_at + 90 * 60.0)
 
 
 @dataclass
@@ -70,8 +131,28 @@ class DistrictState:
 
 
 class Engine:
+    # How often a zone is counted, and with how many devices, depending on what
+    # it is doing. Counting every zone every 30 seconds at full sample spends an
+    # entire hourly budget in a few minutes, after which nothing can be watched
+    # at all — which is how two simultaneous crushes ended up starving each
+    # other. Quiet places are cheap to watch slowly; only a place that is
+    # actually filling deserves the full sample and a fast cadence.
+    # Sample size is a precision decision, not only a cost one. Each counted
+    # device stands for population/panel people, so a sample of 18 moves the
+    # estimate in jumps of well over a thousand — far larger than the change
+    # being looked for. Idle places can afford that coarseness; a place that is
+    # filling cannot.
+    CADENCE = {
+        IDLE:       (300.0, 22),   # every 5 min, coarse
+        WATCHING:   (120.0, 45),   # every 2 min, full sample
+        CONFIRMING: (60.0, 60),    # every minute, oversampled
+        ALERT:      (60.0, 60),
+        STANDDOWN:  (300.0, 22),
+    }
+
     def __init__(self, city: City, client: CamaraClient, registry: DeviceRegistry,
-                 budget: Budget | None = None, panel_sample: int = 45) -> None:
+                 budget: Budget | None = None, panel_sample: int = 45,
+                 seed: int = 5) -> None:
         self.city = city
         self.client = client
         self.registry = registry
@@ -83,8 +164,67 @@ class Engine:
         self.trace: list[dict] = []
         self.alerts: list[dict] = []
         self.now = 0.0
+        self._rng = random.Random(seed)
+        self.schedule: list[ScheduledEvent] = []
+        self.predictions: list[dict] = []
+        self._announced: set[str] = set()
 
     # ------------------------------------------------------------------
+
+    def add_scheduled(self, ev: ScheduledEvent) -> None:
+        self.schedule.append(ev)
+
+    def _scheduled_zones(self) -> set[str]:
+        """
+        Zones with a known event, and the free prediction that comes with them.
+
+        For a scheduled crowd the danger can be worked out before anyone moves,
+        from two numbers we already have: how many people are expected and over
+        what period, against how many the narrowest link can pass. Both come
+        from the fixture list and the city plan, so this costs nothing and is
+        available before the first person leaves their seat.
+
+        It is a PREDICTION, not a measurement, and is labelled that way. What it
+        buys is the decision to watch closely from the start, and a warning to
+        an operator while there is still time to open another gate. Measurement
+        then confirms it or takes it back.
+        """
+        live = set()
+        for ev in self.schedule:
+            if not ev.active(self.now):
+                continue
+            live.add(ev.zone_id)
+            key = f"{ev.zone_id}:{ev.starts_at}"
+            if key in self._announced:
+                continue
+            self._announced.add(key)
+            mins = (ev.starts_at - self.now) / 60.0
+            inflow = ev.expected_inflow_per_min()
+            capacity = self.city.zone_capacity_per_min(ev.zone_id)
+            hazard = self.city.bottleneck_of(ev.zone_id)
+            width = hazard.width_m if hazard else 0.0
+            if inflow > capacity:
+                self.predictions.append({
+                    "t": self.now, "zone_id": ev.zone_id, "predicted": True,
+                    "expected_inflow_per_min": round(inflow),
+                    "capacity_per_min": round(capacity),
+                    "segment": hazard.id if hazard else None,
+                    "segment_label": hazard.label if hazard else "unlocated",
+                })
+                self.log("predict",
+                         f"{ev.label or ev.zone_id[5:]} in {mins:.0f} min: about "
+                         f"{ev.expected_attendance:,} people over "
+                         f"{ev.duration_s/60:.0f} min is ~{inflow:,.0f}/min, against a "
+                         f"{width:.0f} m link that passes ~{capacity:,.0f}/min. "
+                         "More will arrive than can leave - predicted before anyone moves.",
+                         zone=ev.zone_id, predicted=True)
+            else:
+                self.log("prearm",
+                         f"{ev.label or ev.zone_id[5:]} in {mins:.0f} min "
+                         f"(~{ev.expected_attendance:,} people, ~{inflow:,.0f}/min against "
+                         f"{capacity:,.0f}/min capacity) - within capacity, watching anyway",
+                         zone=ev.zone_id)
+        return live
 
     def log(self, kind: str, msg: str, **extra) -> None:
         self.trace.append({"t": self.now, "kind": kind, "msg": msg, **extra})
@@ -152,8 +292,13 @@ class Engine:
             return 0.0, 0, 0
 
         take = min(self.panel_sample, len(panel), max_calls)
+        # Draw a FRESH random subset every time. Taking the first N of a stable
+        # list asks the same people on every cycle, so if none of them happen to
+        # be near the crowd the count stays near zero for ever. That is worst
+        # exactly when budget is tight and the subset is smallest.
+        chosen = self._rng.sample(panel, take) if take < len(panel) else list(panel)
         inside = checked = 0
-        for hashed in panel[:take]:
+        for hashed in chosen:
             phone = self.registry.vault.phone_for(hashed)
             if not phone:
                 continue
@@ -176,11 +321,28 @@ class Engine:
         self.now = time.time() if now is None else now
         self._prune()
 
+        scheduled = self._scheduled_zones()
         shares = self._congestion_signal()
         vals = sorted(shares.values())
-        median = vals[len(vals) // 2] if vals else 0.0
-        # Every district elevated together is a network fault, not a crowd.
-        city_wide = sum(1 for v in shares.values() if v > 0.35) >= max(3, len(shares) - 1)
+        # Compare against the QUIETEST district, not the middle or the quartile.
+        #
+        # The median works while exactly one district is busy, and the lower
+        # quartile works while at most one is. With three of four busy the
+        # quartile lands on a busy district itself, so nothing looks unusual and
+        # three simultaneous crushes went undetected. The minimum stays low as
+        # long as any part of the city is calm, and the case where nothing is
+        # calm is already handled separately as a network fault.
+        baseline = vals[0] if vals else 0.0
+        # A network fault raises congestion everywhere, including places where
+        # nobody has gathered. Suppression therefore requires EVERY district to
+        # be elevated, not most of them.
+        #
+        # Requiring only "most" was wrong: three genuine crowds in three of four
+        # districts looked identical to a fault and were suppressed, so the
+        # three-crowd scenario detected nothing at all. Demanding all four means
+        # a real fault costs a little counting before it is dismissed, which is
+        # much cheaper than missing three simultaneous crushes.
+        city_wide = all(v > 0.35 for v in shares.values()) and len(shares) > 1
 
         # 1. Which zones deserve paid attention?
         wanted: list[Request] = []
@@ -188,16 +350,35 @@ class Engine:
             did = zs.district_id
             share = shares.get(did, 0.0)
             interesting = (
-                (not city_wide and share >= 0.10 and share >= 2.0 * max(median, 0.01))
-                or self.districts[did].state in (WATCHING, CONFIRMING, ALERT)
-                or zs.rate_per_min() > 0
-            )
+                # A known event beats every measured signal, and costs nothing.
+                zid in scheduled
+            ) or (
+                not city_wide
+                and (
+                    # unusual against the calm parts of the city
+                    (share >= 0.10 and share >= 2.0 * max(baseline, 0.02))
+                    # or simply strong on its own, which matters when several
+                    # districts are busy and comparison alone is ambiguous
+                    or share >= 0.25
+                )
+            ) or self.districts[did].state in (WATCHING, CONFIRMING, ALERT) or zs.rate_per_min() > 0
             if not interesting:
                 continue
+            # Respect this zone's own cadence.
+            state = ALERT if zs.alerted else self.districts[did].state
+            interval, sample = self.CADENCE.get(state, (300.0, 22))
+            # Congestion is free and arrives early. Treating it as a reason to
+            # look more closely — rather than waiting until a rate has already
+            # been measured — is what buys the warning time.
+            if state == IDLE and (zid in scheduled or zs.rate_per_min() > 0 or share >= 0.20):
+                interval, sample = self.CADENCE[WATCHING]
+            if self.now < zs.next_check_at:
+                continue
+
             last = zs.last_verdict
             wanted.append(Request(
                 district_id=did, zone_id=zid,
-                calls_wanted=self.panel_sample,
+                calls_wanted=sample,
                 severity=last.severity if last else 0.4,
                 people=last.people_low if last else 0.0,
                 seconds_to_critical=last.seconds_to_critical if last else None,
@@ -215,14 +396,14 @@ class Engine:
         if len(wanted) > 1:
             self.log("allocate",
                      f"{len(wanted)} zones want attention; budget split "
-                     + ", ".join(f"{r.zone_id[5:]}={grants.get(r.district_id, 0)}" for r in wanted),
-                     grants={r.zone_id: grants.get(r.district_id, 0) for r in wanted})
+                     + ", ".join(f"{r.zone_id[5:]}={grants.get(r.zone_id, 0)}" for r in wanted),
+                     grants={r.zone_id: grants.get(r.zone_id, 0) for r in wanted})
 
         # 3. Spend where funded.
         verdicts: list[Verdict] = []
         for req in wanted:
             zs = self.zones[req.zone_id]
-            allowed = grants.get(req.district_id, 0)
+            allowed = grants.get(req.zone_id, 0)
             if allowed <= 0:
                 zs.unresolved_since = zs.unresolved_since or self.now
                 self.log("unresolved",
@@ -233,15 +414,33 @@ class Engine:
             people, inside, checked = self.count_zone(req.zone_id, allowed)
             if checked == 0:
                 continue
+            state_now = ALERT if zs.alerted else self.districts[req.district_id].state
+            zs.next_check_at = self.now + self.CADENCE.get(state_now, (300.0, 18))[0]
             zs.unresolved_since = None
             zs.counts.append((self.now, people))
             zs.last_checked = self.now
 
             rate = zs.rate_per_min()
             capacity = self.city.zone_capacity_per_min(req.zone_id)
+            # Hysteresis, and a run of confirmations before the clock starts.
+            #
+            # Each counted device stands for hundreds of people, so a single
+            # cycle can read high or low purely by chance. Starting the clock on
+            # one high reading let a safe staggered release raise an alarm, and
+            # clearing it on one low reading kept resetting a real crush back to
+            # zero. So: start high, clear only when clearly low, and require two
+            # consecutive high readings before the fill is believed.
+            #
+            # Two confirmations replace most of the old sustained timer rather
+            # than adding to it. Demanding three confirmations AND four minutes
+            # on the clock asked for the same evidence twice and detected
+            # nothing at all.
             if rate >= 0.60 * capacity:
-                zs.filling_since = zs.filling_since or self.now
-            else:
+                zs.consecutive_high += 1
+                if zs.consecutive_high >= 2:
+                    zs.filling_since = zs.filling_since or self.now
+            elif rate < 0.35 * capacity:
+                zs.consecutive_high = 0
                 zs.filling_since = None
             sustained = 0.0 if zs.filling_since is None else self.now - zs.filling_since
 
@@ -249,21 +448,41 @@ class Engine:
                 zone_id=req.zone_id, people=people, people_rate_per_min=rate,
                 inside_sampled=inside, sustained_s=sustained,
             ))
+            # A zone whose danger was predicted from the fixture list does not
+            # have to re-prove that it is a crowd. Prediction plus a measured
+            # rise is enough, which is what recovers the warning time that
+            # waiting for full statistical confirmation gives away.
+            if (not v.dangerous and not zs.alerted and rate > 0
+                    and any(pr["zone_id"] == req.zone_id for pr in self.predictions)):
+                cap = self.city.zone_capacity_per_min(req.zone_id)
+                if rate >= 0.45 * cap and zs.consecutive_high >= 1:
+                    v.dangerous = True
+                    v.fired_by = "predicted_and_rising"
+                    v.reason = (f"predicted before the event; measurement confirms it "
+                                f"filling at {rate:,.0f}/min against {cap:,.0f}/min capacity")
+
             zs.last_verdict = v
             verdicts.append(v)
 
+            # Alert state belongs to the ZONE, not the district. A district can
+            # hold several zones, and when one of them was calm the district was
+            # being reset out of ALERT, which let the dangerous zone re-fire on
+            # the next tick. One crowd produced thirteen alerts that way.
             ds = self.districts[req.district_id]
             if v.dangerous:
-                if ds.state != ALERT:
-                    ds.state = ALERT
+                if not zs.alerted:
+                    zs.alerted = True
                     self.alerts.append({"t": self.now, **v.to_dict()})
                     self.log("alert", f"{v.hazard_label}: {v.reason}", **v.to_dict())
-            elif rate > 0:
-                ds.state = WATCHING
-            elif ds.state == ALERT:
-                ds.state = STANDDOWN
-                self.log("standdown", f"{req.zone_id[5:]} is clearing - releasing attention",
-                         zone=req.zone_id)
+                ds.state = ALERT
+            else:
+                if zs.alerted and rate <= 0:
+                    zs.alerted = False
+                    self.log("standdown", f"{req.zone_id[5:]} is clearing", zone=req.zone_id)
+                # The district stays in ALERT while ANY of its zones is alerted.
+                any_alerted = any(self.zones[z.id].alerted
+                                  for z in self.city.zones_of(req.district_id))
+                ds.state = ALERT if any_alerted else (WATCHING if rate > 0 else IDLE)
 
         return verdicts
 

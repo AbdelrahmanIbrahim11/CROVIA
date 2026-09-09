@@ -132,7 +132,7 @@ def assess(city: City, ev: Evidence) -> Verdict:
 
     # --- the three tests ---------------------------------------------------
     filling = (
-        ev.sustained_s >= 240.0
+        ev.sustained_s >= 120.0   # the engine already required two confirmations
         and ev.people_rate_per_min >= FILLING_FRACTION * capacity
         and risk >= 1.4
         and ev.people >= MIN_PEOPLE

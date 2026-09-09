@@ -1,0 +1,41 @@
+{
+ "cheap": {
+  "sensitivity": 33.333333333333336,
+  "specificity": 99.14529914529915,
+  "tp": 11,
+  "fn": 22,
+  "fp": 1,
+  "in_time": 7,
+  "n_lead": 11,
+  "median_lead_min": 1.9166666666666667,
+  "count_err_pct": 12.5,
+  "segment": "11/11",
+  "calls": 1601.5
+ },
+ "balanced": {
+  "sensitivity": 9.090909090909092,
+  "specificity": 99.14529914529915,
+  "tp": 3,
+  "fn": 30,
+  "fp": 1,
+  "in_time": 1,
+  "n_lead": 3,
+  "median_lead_min": -1.3333333333333333,
+  "count_err_pct": 15.987499999999999,
+  "segment": "3/3",
+  "calls": 1635.0
+ },
+ "precise": {
+  "sensitivity": 54.54545454545455,
+  "specificity": 99.14529914529915,
+  "tp": 18,
+  "fn": 15,
+  "fp": 1,
+  "in_time": 10,
+  "n_lead": 18,
+  "median_lead_min": 0.6666666666666666,
+  "count_err_pct": 13.472222222222221,
+  "segment": "18/18",
+  "calls": 2127.5
+ }
+}

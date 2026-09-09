@@ -20,7 +20,6 @@
     "Segment offsets are metres east (x) and north (y) from the zone centre.",
     "Width is what decides throughput; length only decides how many people fit."
   ],
-
   "constants": {
     "peak_specific_flow_p_per_m_per_s": 1.2,
     "capacity_per_m_width_per_min": 72,
@@ -31,7 +30,6 @@
     "min_zone_radius_m": 600,
     "_min_radius_note": "Nokia: below this, geofence events are unreliable. Do not let an operator draw a smaller circle."
   },
-
   "city": {
     "id": "lusail",
     "name": "Lusail",
@@ -39,21 +37,31 @@
     "label": "Lusail · Qatar",
     "sublabel": "Smart city pilot · crowd safety",
     "timezone": "Asia/Qatar",
-    "center": { "lat": 25.412, "lon": 51.506 },
-    "bbox": [51.475, 25.37, 51.545, 25.445],
+    "center": {
+      "lat": 25.412,
+      "lon": 51.506
+    },
+    "bbox": [
+      51.475,
+      25.37,
+      51.545,
+      25.445
+    ],
     "defaultZoom": 12.8,
     "minZoom": 11,
     "maxZoom": 17,
     "population": 30000,
     "app_users": 10000
   },
-
   "districts": [
     {
       "id": "district_stadium",
       "label": "Stadium Precinct",
       "short": "Stadium",
-      "center": { "lat": 25.416, "lon": 51.494 },
+      "center": {
+        "lat": 25.416,
+        "lon": 51.494
+      },
       "radius_m": 1200,
       "anchor": "Lusail Stadium",
       "capacity_hint": 88966,
@@ -63,7 +71,10 @@
       "id": "district_foxhills",
       "label": "Fox Hills",
       "short": "Fox Hills",
-      "center": { "lat": 25.4275, "lon": 51.5043 },
+      "center": {
+        "lat": 25.4275,
+        "lon": 51.5043
+      },
       "radius_m": 900,
       "anchor": "Fox Hills",
       "capacity_hint": null,
@@ -73,7 +84,10 @@
       "id": "district_central",
       "label": "Lusail Central",
       "short": "Central",
-      "center": { "lat": 25.4229, "lon": 51.5197 },
+      "center": {
+        "lat": 25.4229,
+        "lon": 51.5197
+      },
       "radius_m": 1100,
       "anchor": "Lusail city centre",
       "capacity_hint": null,
@@ -83,21 +97,26 @@
       "id": "district_marina",
       "label": "Marina Waterfront",
       "short": "Marina",
-      "center": { "lat": 25.3824, "lon": 51.5271 },
+      "center": {
+        "lat": 25.3824,
+        "lon": 51.5271
+      },
       "radius_m": 1000,
       "anchor": "Lusail Marina",
       "capacity_hint": null,
       "notes": "Waterfront dining and promenade well south of the stadium. Sustained evening density."
     }
   ],
-
   "zones": [
     {
       "id": "zone_stadium_north_concourse",
       "district_id": "district_stadium",
       "label": "Stadium north concourse",
       "kind": "egress_gate",
-      "center": { "lat": 25.424, "lon": 51.4904 },
+      "center": {
+        "lat": 25.424,
+        "lon": 51.4904
+      },
       "radius_m": 600,
       "notes": "Primary egress fan out of the stadium. Highest crush risk in the pilot."
     },
@@ -106,7 +125,10 @@
       "district_id": "district_stadium",
       "label": "Stadium tram link",
       "kind": "transit",
-      "center": { "lat": 25.4113, "lon": 51.4948 },
+      "center": {
+        "lat": 25.4113,
+        "lon": 51.4948
+      },
       "radius_m": 600,
       "notes": "Lusail Tram terminus. Funnels stadium egress onto rail; platform capacity is the constraint."
     },
@@ -115,7 +137,10 @@
       "district_id": "district_foxhills",
       "label": "Fox Hills crossing",
       "kind": "crossing",
-      "center": { "lat": 25.4265, "lon": 51.503 },
+      "center": {
+        "lat": 25.4265,
+        "lon": 51.503
+      },
       "radius_m": 600,
       "notes": "Signalised crossing on the walking route out of the precinct."
     },
@@ -124,7 +149,10 @@
       "district_id": "district_central",
       "label": "Central plaza crossing",
       "kind": "crossing",
-      "center": { "lat": 25.4235, "lon": 51.517 },
+      "center": {
+        "lat": 25.4235,
+        "lon": 51.517
+      },
       "radius_m": 600,
       "notes": "Main pedestrian crossing in the commercial core."
     },
@@ -133,83 +161,372 @@
       "district_id": "district_marina",
       "label": "Marina promenade",
       "kind": "pedestrian_corridor",
-      "center": { "lat": 25.383, "lon": 51.5255 },
+      "center": {
+        "lat": 25.383,
+        "lon": 51.5255
+      },
       "radius_m": 600,
       "notes": "Waterfront walk. Water on one side means egress is single-sided."
     }
   ],
-
   "segments": {
     "zone_stadium_north_concourse": [
-      { "id": "seg_bowl_exit", "label": "Stadium bowl exit walk",
-        "offsets": [[-820, 430], [-500, 270], [-260, 140]], "width_m": 30, "risk": 0.7,
-        "drains_to": "seg_concourse_fan" },
-      { "id": "seg_concourse_fan", "label": "North concourse fan",
-        "offsets": [[-260, 140], [0, 70], [190, 95]], "width_m": 26, "risk": 1.0,
-        "drains_to": "seg_concourse_ramp" },
-      { "id": "seg_concourse_ramp", "label": "North ramp narrows",
-        "offsets": [[190, 95], [215, -50]], "width_m": 9, "risk": 1.9,
+      {
+        "id": "seg_bowl_exit",
+        "label": "Stadium bowl exit walk",
+        "offsets": [
+          [
+            -820,
+            430
+          ],
+          [
+            -500,
+            270
+          ],
+          [
+            -260,
+            140
+          ]
+        ],
+        "width_m": 30,
+        "risk": 0.7,
+        "drains_to": "seg_concourse_fan"
+      },
+      {
+        "id": "seg_concourse_fan",
+        "label": "North concourse fan",
+        "offsets": [
+          [
+            -260,
+            140
+          ],
+          [
+            0,
+            70
+          ],
+          [
+            190,
+            95
+          ]
+        ],
+        "width_m": 26,
+        "risk": 1.0,
+        "drains_to": "seg_concourse_ramp"
+      },
+      {
+        "id": "seg_concourse_ramp",
+        "label": "North ramp narrows",
+        "offsets": [
+          [
+            190,
+            95
+          ],
+          [
+            215,
+            -50
+          ]
+        ],
+        "width_m": 9,
+        "risk": 1.9,
         "drains_to": "seg_north_plaza",
-        "_note": "THE BOTTLENECK. 9 m wide = about 650 people/min." },
-      { "id": "seg_north_plaza", "label": "North plaza open ground",
-        "offsets": [[215, -50], [500, -380], [820, -640]], "width_m": 40, "risk": 0.8,
-        "drains_to": null }
+        "_note": "THE BOTTLENECK. 9 m wide = about 650 people/min."
+      },
+      {
+        "id": "seg_north_plaza",
+        "label": "North plaza open ground",
+        "offsets": [
+          [
+            215,
+            -50
+          ],
+          [
+            500,
+            -380
+          ],
+          [
+            820,
+            -640
+          ]
+        ],
+        "width_m": 40,
+        "risk": 0.8,
+        "drains_to": null
+      }
     ],
     "zone_stadium_tram_link": [
-      { "id": "seg_tram_approach", "label": "Tram approach walk",
-        "offsets": [[-720, 270], [-260, 100], [0, 25]], "width_m": 11, "risk": 1.5,
-        "drains_to": "seg_tram_platform" },
-      { "id": "seg_tram_platform", "label": "Tram platform",
-        "offsets": [[0, 25], [180, -50]], "width_m": 7.5, "risk": 2.1,
+      {
+        "id": "seg_tram_approach",
+        "label": "Tram approach walk",
+        "offsets": [
+          [
+            -720,
+            270
+          ],
+          [
+            -260,
+            100
+          ],
+          [
+            0,
+            25
+          ]
+        ],
+        "width_m": 11,
+        "risk": 1.5,
+        "drains_to": "seg_tram_platform"
+      },
+      {
+        "id": "seg_tram_platform",
+        "label": "Tram platform",
+        "offsets": [
+          [
+            0,
+            25
+          ],
+          [
+            180,
+            -50
+          ]
+        ],
+        "width_m": 7.5,
+        "risk": 2.1,
         "drains_to": "seg_tram_depart",
-        "_note": "Narrowest link in the pilot. About 540 people/min." },
-      { "id": "seg_tram_depart", "label": "Tram departure ramp",
-        "offsets": [[180, -50], [540, -200], [820, -330]], "width_m": 18, "risk": 0.8,
-        "drains_to": null }
+        "_note": "Narrowest link in the pilot. About 540 people/min."
+      },
+      {
+        "id": "seg_tram_depart",
+        "label": "Tram departure ramp",
+        "offsets": [
+          [
+            180,
+            -50
+          ],
+          [
+            540,
+            -200
+          ],
+          [
+            820,
+            -330
+          ]
+        ],
+        "width_m": 18,
+        "risk": 0.8,
+        "drains_to": null
+      }
     ],
     "zone_foxhills_crossing": [
-      { "id": "seg_foxhills_approach", "label": "Fox Hills approach",
-        "offsets": [[-700, 50], [-160, 15]], "width_m": 16, "risk": 0.8,
-        "drains_to": "seg_foxhills_cross" },
-      { "id": "seg_foxhills_cross", "label": "Fox Hills signalised crossing",
-        "offsets": [[-160, 15], [160, -15]], "width_m": 8, "risk": 1.3,
-        "drains_to": "seg_foxhills_exit" },
-      { "id": "seg_foxhills_exit", "label": "Fox Hills exit street",
-        "offsets": [[160, -15], [700, -80]], "width_m": 18, "risk": 0.8,
-        "drains_to": null }
+      {
+        "id": "seg_foxhills_approach",
+        "label": "Fox Hills approach",
+        "offsets": [
+          [
+            -700,
+            50
+          ],
+          [
+            -60,
+            8
+          ]
+        ],
+        "width_m": 16,
+        "risk": 0.8,
+        "drains_to": "seg_foxhills_cross"
+      },
+      {
+        "id": "seg_foxhills_cross",
+        "label": "Fox Hills signalised crossing",
+        "offsets": [
+          [
+            -60,
+            8
+          ],
+          [
+            60,
+            -8
+          ]
+        ],
+        "width_m": 8,
+        "risk": 1.3,
+        "drains_to": "seg_foxhills_exit",
+        "_note": "About 120 m of 8 m crossing = 960 m2. Roughly 4,000 people is already dangerous."
+      },
+      {
+        "id": "seg_foxhills_exit",
+        "label": "Fox Hills exit street",
+        "offsets": [
+          [
+            60,
+            -8
+          ],
+          [
+            700,
+            -80
+          ]
+        ],
+        "width_m": 18,
+        "risk": 0.8,
+        "drains_to": null
+      }
     ],
     "zone_central_plaza_crossing": [
-      { "id": "seg_central_approach", "label": "Central approach",
-        "offsets": [[-720, 175], [-180, 55]], "width_m": 18, "risk": 0.8,
-        "drains_to": "seg_central_cross" },
-      { "id": "seg_central_cross", "label": "Central plaza crossing",
-        "offsets": [[-180, 55], [180, -55]], "width_m": 10, "risk": 1.1,
-        "drains_to": "seg_central_exit" },
-      { "id": "seg_central_exit", "label": "Central exit street",
-        "offsets": [[180, -55], [720, -185]], "width_m": 20, "risk": 0.8,
-        "drains_to": null }
+      {
+        "id": "seg_central_approach",
+        "label": "Central approach",
+        "offsets": [
+          [
+            -720,
+            175
+          ],
+          [
+            -180,
+            55
+          ]
+        ],
+        "width_m": 18,
+        "risk": 0.8,
+        "drains_to": "seg_central_cross"
+      },
+      {
+        "id": "seg_central_cross",
+        "label": "Central plaza crossing",
+        "offsets": [
+          [
+            -180,
+            55
+          ],
+          [
+            180,
+            -55
+          ]
+        ],
+        "width_m": 10,
+        "risk": 1.1,
+        "drains_to": "seg_central_exit"
+      },
+      {
+        "id": "seg_central_exit",
+        "label": "Central exit street",
+        "offsets": [
+          [
+            180,
+            -55
+          ],
+          [
+            720,
+            -185
+          ]
+        ],
+        "width_m": 20,
+        "risk": 0.8,
+        "drains_to": null
+      }
     ],
     "zone_marina_promenade": [
-      { "id": "seg_marina_approach", "label": "Marina approach",
-        "offsets": [[-800, -210], [-400, -105]], "width_m": 20, "risk": 0.8,
-        "drains_to": "seg_marina_walk" },
-      { "id": "seg_marina_walk", "label": "Marina promenade walk",
-        "offsets": [[-400, -105], [-200, -50], [-50, -12]], "width_m": 5, "risk": 1.8,
+      {
+        "id": "seg_marina_approach",
+        "label": "Marina approach",
+        "offsets": [
+          [
+            -800,
+            -210
+          ],
+          [
+            -400,
+            -105
+          ]
+        ],
+        "width_m": 20,
+        "risk": 0.8,
+        "drains_to": "seg_marina_walk"
+      },
+      {
+        "id": "seg_marina_walk",
+        "label": "Marina promenade walk",
+        "offsets": [
+          [
+            -400,
+            -105
+          ],
+          [
+            -200,
+            -50
+          ],
+          [
+            -50,
+            -12
+          ]
+        ],
+        "width_m": 5,
+        "risk": 1.8,
         "drains_to": "seg_marina_exit",
-        "_note": "5 m wide, water on one side. About 360 people/min." },
-      { "id": "seg_marina_exit", "label": "Marina exit ramp",
-        "offsets": [[-50, -12], [400, 80], [800, 160]], "width_m": 24, "risk": 0.8,
-        "drains_to": null }
+        "_note": "5 m wide, water on one side. About 360 people/min."
+      },
+      {
+        "id": "seg_marina_exit",
+        "label": "Marina exit ramp",
+        "offsets": [
+          [
+            -50,
+            -12
+          ],
+          [
+            400,
+            80
+          ],
+          [
+            800,
+            160
+          ]
+        ],
+        "width_m": 24,
+        "risk": 0.8,
+        "drains_to": null
+      }
     ]
   },
-
   "landmarks": [
-    { "id": "lm_stadium", "label": "Lusail Stadium", "lat": 25.4208, "lon": 51.4904 },
-    { "id": "lm_boulevard", "label": "Lusail Boulevard", "lat": 25.4157, "lon": 51.4966 },
-    { "id": "lm_tram", "label": "Lusail Tram", "lat": 25.4113, "lon": 51.4948 },
-    { "id": "lm_foxhills", "label": "Fox Hills", "lat": 25.4275, "lon": 51.5043 },
-    { "id": "lm_central", "label": "Lusail centre", "lat": 25.4229, "lon": 51.5197 },
-    { "id": "lm_qetaifan", "label": "Qetaifan Island North", "lat": 25.4315, "lon": 51.5279 },
-    { "id": "lm_marina", "label": "Lusail Marina", "lat": 25.3824, "lon": 51.5271 }
+    {
+      "id": "lm_stadium",
+      "label": "Lusail Stadium",
+      "lat": 25.4208,
+      "lon": 51.4904
+    },
+    {
+      "id": "lm_boulevard",
+      "label": "Lusail Boulevard",
+      "lat": 25.4157,
+      "lon": 51.4966
+    },
+    {
+      "id": "lm_tram",
+      "label": "Lusail Tram",
+      "lat": 25.4113,
+      "lon": 51.4948
+    },
+    {
+      "id": "lm_foxhills",
+      "label": "Fox Hills",
+      "lat": 25.4275,
+      "lon": 51.5043
+    },
+    {
+      "id": "lm_central",
+      "label": "Lusail centre",
+      "lat": 25.4229,
+      "lon": 51.5197
+    },
+    {
+      "id": "lm_qetaifan",
+      "label": "Qetaifan Island North",
+      "lat": 25.4315,
+      "lon": 51.5279
+    },
+    {
+      "id": "lm_marina",
+      "label": "Lusail Marina",
+      "lat": 25.3824,
+      "lon": 51.5271
+    }
   ]
 }

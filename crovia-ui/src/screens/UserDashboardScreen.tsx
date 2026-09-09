@@ -16,7 +16,9 @@ import { MarkerData } from '../components/MapMarker';
 import { Toast } from '../components/NotificationCard';
 import { StatusChip } from '../components/StatusChip';
 import { MotionButton } from '../components/MotionButton';
-import { blobs, clusters, markers, notifications, REGION, REGION_SUB } from '../data';
+import { blobs, clusters as demoClusters, markers, notifications, REGION, REGION_SUB } from '../data';
+import { toOverlays } from '../api';
+import { useLiveState } from '../useLiveState';
 
 const bgColor = '#161A28';
 const accentColor = '#F2A93B';
@@ -34,6 +36,11 @@ export function UserDashboardScreen({
   onOpenAlerts: () => void;
   onSignOut: () => void;
 }) {
+  const { state, connection } = useLiveState(5000);
+  const clusters = state ? toOverlays(state).clusters : demoClusters;
+  // What the citizen is told: the nearest live alarm, or the demo notice.
+  const liveAlert = state?.alerts?.[state.alerts.length - 1] ?? null;
+
   const [selected, setSelected] = useState<MarkerData | null>(null);
   const [zoneOpen, setZoneOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -43,7 +50,13 @@ export function UserDashboardScreen({
     <VStack flex={1} bg={bgColor}>
       <AppHeader
         region={REGION}
-        subtitle={REGION_SUB}
+        subtitle={
+          connection === 'live'
+            ? liveAlert
+              ? `Live · ${liveAlert.segment_label}`
+              : 'Live · no crowd warnings'
+            : REGION_SUB
+        }
         unread={unread}
         onBell={onOpenAlerts}
         onSettings={() => setSettingsOpen(true)}

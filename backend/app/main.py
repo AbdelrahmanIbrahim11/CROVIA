@@ -24,7 +24,7 @@ from app.api.webhooks import router as webhook_router
 from app.core.city import city
 from app.db.redis import close_redis, get_redis
 from app.respones.responses import UserResponse
-from app.runtime import get_engine
+from app.runtime import engine_now, get_engine, step_twin
 from app.services import enrollment
 from app.usersDB import services as dbServices
 from app.usersDB.db import create_table, getdb
@@ -48,9 +48,23 @@ async def _engine_loop() -> None:
     never be reassessed and a busy one would be reassessed on every packet.
     """
     engine = get_engine()
+    # In twin mode a demo is sped up, but the ENGINE must still see the world at
+    # its normal cadence. Advancing thirty minutes of simulated time and then
+    # ticking once means the engine takes two samples of a crowd that formed
+    # entirely between them, and a fill it never saw cannot be detected. So the
+    # world moves in ordinary-sized steps and the engine runs after each one;
+    # only the wall-clock wait between them is shortened.
+    step_s = float(os.getenv("ENGINE_STEP_SECONDS", "30"))
     while True:
         try:
-            engine.tick()
+            now = engine_now()
+            if now is None:
+                engine.tick()
+            else:
+                speed = float(os.getenv("CROVIA_TWIN_SPEED", "1"))
+                for _ in range(max(1, int(TICK_SECONDS * speed / step_s))):
+                    step_twin(step_s)
+                    engine.tick(engine_now())
         except Exception:
             logger.exception("engine tick failed")
         await asyncio.sleep(TICK_SECONDS)

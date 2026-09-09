@@ -7,13 +7,16 @@ import { StatusChip } from '../components/StatusChip';
 import { MotionButton } from '../components/MotionButton';
 import {
   blobs,
-  clusters,
-  districtOverlays,
+  clusters as demoClusters,
+  districtOverlays as demoDistricts,
   markers,
   REGION,
-  zoneOverlays,
-  zoneRows,
+  zoneOverlays as demoZones,
+  zoneRows as demoRows,
 } from '../data';
+import { toOverlays } from '../api';
+import { useLiveState } from '../useLiveState';
+import { zoneById } from '../geo';
 
 type Tool = null | 'draw' | 'reroute' | 'measure';
 
@@ -40,6 +43,49 @@ export function AdminDashboardScreen({
   extraToolbar?: React.ReactNode;
   roleLabel?: string;
 }) {
+  // Live state when the backend is reachable, demo data when it is not. The
+  // map itself never depends on the backend, because the geography comes from
+  // the same file both sides read.
+  const { state, connection } = useLiveState(5000);
+  const live = state ? toOverlays(state) : null;
+  const districtOverlays = live?.districts ?? demoDistricts;
+  const zoneOverlays = live?.zones ?? demoZones;
+  const clusters = live?.clusters ?? demoClusters;
+
+  const zoneRows = state
+    ? Object.entries(state.zones)
+        .filter(([, v]) => v)
+        .map(([id, v]) => ({
+          id,
+          name: zoneById[id]?.label ?? id,
+          score: Math.round((v!.severity ?? 0) * 100),
+          heads: `${Math.round(v!.people_low).toLocaleString()}–${Math.round(
+            v!.people_high,
+          ).toLocaleString()}`,
+          level: (v!.dangerous
+            ? 'critical'
+            : v!.severity >= 0.5
+            ? 'elevated'
+            : v!.severity >= 0.2
+            ? 'watch'
+            : 'calm') as 'critical' | 'elevated' | 'watch' | 'calm',
+        }))
+        .sort((a, b) => b.score - a.score)
+    : demoRows;
+
+  // Headline figures, from live state when there is any.
+  const topScore = zoneRows.length ? Math.max(...zoneRows.map((z) => z.score)) : 0;
+  const peopleWatched = state
+    ? Math.round(
+        Object.values(state.zones).reduce(
+          (sum, v) => sum + (v ? (v.people_low + v.people_high) / 2 : 0),
+          0,
+        ),
+      ).toLocaleString()
+    : '4,400';
+
+  const criticalCount = zoneRows.filter((z) => z.level === 'critical').length;
+
   const [tool, setTool] = useState<Tool>(null);
   const [railOpen, setRailOpen] = useState(true);
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -54,7 +100,13 @@ export function AdminDashboardScreen({
     <VStack flex={1} bg={bgColor}>
       <AppHeader
         region={REGION}
-        subtitle={`${roleLabel} · ${zoneOverlays.length} zones monitored`}
+        subtitle={
+          connection === 'live'
+            ? `${roleLabel} · live · ${state?.monitored.panel ?? 0} panel devices · ${
+                state?.spend.total ?? 0
+              } API calls`
+            : `${roleLabel} · demo data (backend offline)`
+        }
         unread={3}
         onSettings={() => setSettingsOpen(true)}
       />
@@ -146,7 +198,16 @@ export function AdminDashboardScreen({
             <HStack alignItems="center" pb="$4">
               <Text size="xl" fontWeight="$bold" color={textPrimary} flex={1}>Active regions</Text>
               <HStack space="md" alignItems="center">
-                <StatusChip level="critical" label="1 critical" />
+                <StatusChip
+                  level={criticalCount > 0 ? 'critical' : 'calm'}
+                  label={
+                    state
+                      ? criticalCount > 0
+                        ? `${criticalCount} critical`
+                        : 'all clear'
+                      : '1 critical'
+                  }
+                />
                 <Text size="xl" color={textMuted}>{railOpen ? '⌄' : '⌃'}</Text>
               </HStack>
             </HStack>
@@ -155,9 +216,20 @@ export function AdminDashboardScreen({
           {railOpen ? (
             <>
               <HStack borderTopWidth={1} borderBottomWidth={1} borderColor={borderColor} py="$4" space="md">
-                <Metric value="78" label="Peak danger score" tint="#ff4444" />
-                <Metric value="4,400" label="People tracked" />
-                <Metric value="12" label="Probes active" tint="#33b5e5" />
+                <Metric
+                  value={state ? String(topScore) : '78'}
+                  label="Highest severity"
+                  tint={topScore >= 75 ? '#ff4444' : accentColor}
+                />
+                <Metric
+                  value={state ? peopleWatched : '4,400'}
+                  label="People estimated"
+                />
+                <Metric
+                  value={state ? String(state.monitored.panel) : '12'}
+                  label="Panel devices"
+                  tint="#33b5e5"
+                />
               </HStack>
 
               <ScrollView contentContainerStyle={{ gap: 12, paddingTop: 16, paddingBottom: 24 }}>

@@ -22,24 +22,149 @@ logger = logging.getLogger("crovia.runtime")
 _engine: Engine | None = None
 
 
+# Set when the engine is running against the twin, so a demo cannot be mistaken
+# for live network data.
+twin_mode: bool = False
+_twin = None
+
+
 def build_engine() -> Engine:
     """
-    Create the engine, choosing a real or simulated network.
+    Create the engine and choose what is underneath it.
 
-    With no API key configured the simulator is used, which answers from Nokia's
-    published test numbers. That is a deliberate default: the system should come
-    up and be inspectable without credentials, rather than failing at import.
+    Three options, in order of preference:
+
+      NOKIA         a real API key is set. Live network.
+      TWIN          CROVIA_TWIN=1. A simulated Lusail with people who actually
+                    move, behind the same CAMARA interface. This exists because
+                    Nokia's sandbox cannot move a device, so it is the only way
+                    to see a crowd form end to end.
+      SIMULATOR     the default. Answers from Nokia's published test numbers.
+
+    The simulator is the default rather than an error, because the system should
+    come up and be inspectable without credentials.
     """
+    global twin_mode, _twin
     api_key = os.getenv("NOKIA_NAC_API_KEY", "").strip()
-    if api_key:
-        client = NokiaClient(api_key=api_key)
-        logger.info("CAMARA: live Nokia Network as Code")
-    else:
-        client = SimulatorClient()
-        logger.info("CAMARA: simulator (no NOKIA_NAC_API_KEY set)")
-
     budget = Budget(per_hour=int(os.getenv("BUDGET_PER_HOUR", "6000")))
-    return Engine(city, client, DeviceRegistry(), budget)
+
+    if api_key:
+        logger.info("CAMARA: live Nokia Network as Code")
+        return Engine(city, NokiaClient(api_key=api_key), DeviceRegistry(), budget)
+
+    if os.getenv("CROVIA_TWIN", "").strip() in ("1", "true", "yes"):
+        engine = _build_twin_engine(budget)
+        twin_mode = True
+        logger.warning("CAMARA: TWIN MODE - simulated crowds, not real network data")
+        return engine
+
+    logger.info("CAMARA: simulator (no NOKIA_NAC_API_KEY set)")
+    return Engine(city, SimulatorClient(), DeviceRegistry(), budget)
+
+
+def _build_twin_engine(budget: Budget) -> Engine:
+    """Wire a moving population behind the CAMARA interface."""
+    global _twin
+    import numpy as np
+
+    from app.camara.client import Area, ApiError
+    from app.detect.engine import ScheduledEvent
+    from sim.camara_twin import TwinCamaraClient
+    from sim.twin import Event, Population, Twin
+
+    zone = os.getenv("CROVIA_TWIN_ZONE", "zone_stadium_north_concourse")
+    attendees = int(os.getenv("CROVIA_TWIN_ATTENDEES", "12000"))
+    minutes = float(os.getenv("CROVIA_TWIN_MINUTES", "12"))
+
+    _twin = Twin(city, Population(), [Event(zone, attendees, duration_s=minutes * 60,
+                                            label="scheduled event")])
+    client = TwinCamaraClient(_twin)
+    registry = DeviceRegistry()
+    engine = Engine(city, client, registry, budget)
+    engine.add_scheduled(ScheduledEvent(zone, 0.0, attendees, duration_s=minutes * 60,
+                                        label="scheduled event"))
+
+    rng = np.random.default_rng(3)
+    app_idx = np.where(_twin.has_app)[0]
+    by_district: dict[str, list[int]] = {d: [] for d in city.districts}
+    for i in app_idx:
+        by_district[_twin.home_district[i]].append(int(i))
+
+    def phone(i: int) -> str:
+        return f"+974{30000000 + i}"
+
+    for did, members in by_district.items():
+        rng.shuffle(members)
+        for i in members[:60]:
+            p = phone(i)
+            client.bind(p, i)
+            h = registry.add_sentinel(p, did)
+            try:
+                sub = client.create_congestion_subscription(p, "twin", 86400)
+                registry.bind_subscription(sub, h, "congestion", did)
+                d = city.districts[did]
+                g, evt = client.create_geofence_subscription(
+                    p, did, Area(d.center.lat, d.center.lon, d.radius_m), "twin", 86400, True)
+                registry.bind_subscription(g, h, "district", did)
+                if evt and evt["type"] == "area-entered":
+                    registry.place(h, did, 0.0)
+            except ApiError:
+                pass
+    for i in rng.choice(app_idx, size=400, replace=False):
+        p = phone(int(i))
+        client.bind(p, int(i))
+        registry.add_panel(p, _twin.home_district[int(i)])
+    return engine
+
+
+def step_twin(seconds: float) -> None:
+    """
+    Advance the simulated world and deliver its notifications.
+
+    CROVIA_TWIN_SPEED multiplies simulated time. A stadium crowd takes about
+    fifteen minutes to build, so at real time a demo is fifteen minutes of
+    watching almost nothing. The engine is unaffected: it still sees events in
+    the order and spacing the twin produces.
+    """
+    if _twin is None:
+        return
+    engine = get_engine()
+    steps = max(1, int(seconds / _twin.dt))
+    for _ in range(steps):
+        _twin.step()
+    engine.now = _twin.t
+    for ev in engine.client.tick(_twin.t):
+        if ev["type"] == "congestion":
+            engine.on_congestion(ev["subscriptionId"], ev["congestionLevel"],
+                                 ev["confidenceLevel"])
+        else:
+            engine.on_geofence(ev["subscriptionId"], ev["type"])
+
+
+def engine_now() -> float | None:
+    """
+    The clock the engine should use.
+
+    In twin mode this is simulated time, which starts at zero. Letting tick()
+    fall back to wall-clock time mixed the two: step_twin set the engine's clock
+    to the twin's time and tick() immediately replaced it with a Unix timestamp,
+    so every cadence comparison measured a gap of decades and no zone was ever
+    due to be counted.
+    """
+    return None if _twin is None else _twin.t
+
+
+def twin_truth() -> dict | None:
+    """Ground truth, for the demo view only. The engine never reads this."""
+    if _twin is None:
+        return None
+    snap = _twin.history[-1] if _twin.history else None
+    return {
+        "t": _twin.t,
+        "zones": {z: {"true_people": _twin.people_in_zone(z),
+                      "true_density": round(snap["zones"][z]["worst_density"], 2) if snap else 0}
+                  for z in city.zones},
+    }
 
 
 def get_engine() -> Engine:

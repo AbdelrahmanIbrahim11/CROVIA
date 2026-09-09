@@ -13,6 +13,7 @@ from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from app.core.city import city
+from app import runtime
 from app.runtime import get_engine
 from app.ai import graph as ai
 from app.services import enrollment
@@ -71,6 +72,9 @@ def get_state():
             "panel": e.registry.panel_size(),
             "located": len(e.registry.device_district),
         },
+        # Labelled clearly: a demo must never be mistaken for network data.
+        "twin_mode": runtime.twin_mode,
+        "ground_truth": runtime.twin_truth(),
     }
 
 
@@ -83,7 +87,11 @@ def agent_step():
     then judge whether anyone is in danger. Each result carries both, so the
     reasoning and the verdict can be read side by side.
     """
-    return {"decisions": ai.run_once(get_engine())}
+    e = get_engine()
+    now = runtime.engine_now()
+    if now is not None:
+        e.now = now
+    return {"decisions": ai.run_once(e)}
 
 
 @router.get("/agent/policy")

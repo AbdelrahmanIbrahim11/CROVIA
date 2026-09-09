@@ -1,2 +1,47 @@
+# ---------------------------------------------------------------------------
+# Secrets — never commit these.
+# A .env file normally holds API keys. Anything committed here stays in the
+# git history forever, even after the file is deleted later.
+# ---------------------------------------------------------------------------
+.env
+*.env
+!*.env.example
+
+# ---------------------------------------------------------------------------
+# Project
+# ---------------------------------------------------------------------------
 backend/test_logic.py
-backend/app/.env
+
+# ---------------------------------------------------------------------------
+# Virtualenv
+# https://realpython.com/python-virtual-environments-a-primer/#the-virtualenv-project
+# ---------------------------------------------------------------------------
+.venv/
+venv/
+.python-version
+
+# pyenv: Simple Python Version Management
+pyvenv.cfg
+
+# pip: package installer for Python
+pip-selfcheck.json
+
+# Custom python interpreter
+.Python
+[Bb]in
+[Ii]nclude
+[Ll]ib
+[Ll]ib64
+[Ll]ocal
+[Ss]cripts
+
+# ---------------------------------------------------------------------------
+# Python build artefacts
+# ---------------------------------------------------------------------------
+__pycache__/
+*.pyc
+
+# ---------------------------------------------------------------------------
+# Notebooks
+# ---------------------------------------------------------------------------
+.ipynb_checkpoints/

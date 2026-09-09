@@ -4,3 +4,12 @@ pydantic==2.13.5
 pydantic_settings==2.15.0
 python-dotenv==1.2.3
 sqlalchemy
+
+# --- added when merging Feature/backend_database ---
+# The database code imports these, but they were missing from the branch, so
+# the backend could not start.
+bcrypt                 # password hashing in usersDB/services.py
+email-validator        # required by pydantic EmailStr in usersDB/schemas.py
+redis                  # used by app/db/redis.py
+psycopg2-binary        # PostgreSQL driver. Swap this if you choose another database.
+uvicorn                # the server that runs FastAPI

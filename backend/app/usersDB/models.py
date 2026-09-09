@@ -1,4 +1,4 @@
-from db import base
+from app.usersDB.db import base
 from sqlalchemy import String, Column
 from sqlalchemy import UUID
 from sqlalchemy.orm import validates

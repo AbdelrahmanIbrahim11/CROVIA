@@ -8,12 +8,12 @@ from app.db.redis import get_redis, close_redis
 from app.services.subscription_manager import bootstrap_subscriptions
 from app.api.webhooks import router as webhook_router
 from app.services.location_retrieval import location_retrieval_listener
-from usersDB.db import create_table, getdb
-from usersDB.schemas import admin_user, normal_user, authority_user
-from usersDB.dto import user_dto
-from respones.responses import UserResponse
+from app.usersDB.db import create_table, getdb
+from app.usersDB.schemas import admin_user, normal_user, authority_user
+from app.usersDB.dto import user_dto
+from app.respones.responses import UserResponse
 from sqlalchemy.orm import Session
-from usersDB import services as dbServices
+from app.usersDB import services as dbServices
 
 logging.basicConfig(
     level=logging.INFO,

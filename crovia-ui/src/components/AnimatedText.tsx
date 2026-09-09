@@ -64,7 +64,7 @@ export function TypewriterText({
   const [displayedText, setDisplayedText] = useState('');
   
   useEffect(() => {
-    let timeout: NodeJS.Timeout;
+    let timeout: ReturnType<typeof setTimeout>;
     
     // Initial delay before typing starts
     const initialTimeout = setTimeout(() => {

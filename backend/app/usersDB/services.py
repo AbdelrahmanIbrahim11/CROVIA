@@ -1,8 +1,8 @@
-import models
+from app.usersDB import models
 from sqlalchemy.orm import Session
 from sqlalchemy import and_
-from schemas import normal_userCreate, admin_userCreate, authority_userCreate
-from models import normal_user, admin_user, authority_user
+from app.usersDB.schemas import normal_userCreate, admin_userCreate, authority_userCreate
+from app.usersDB.models import normal_user, admin_user, authority_user
 from typing import Literal
 import bcrypt
 

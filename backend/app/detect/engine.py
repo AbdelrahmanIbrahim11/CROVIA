@@ -142,12 +142,23 @@ class Engine:
     # estimate in jumps of well over a thousand — far larger than the change
     # being looked for. Idle places can afford that coarseness; a place that is
     # filling cannot.
+    # Chosen by measurement, not by taste. Three settings were swept across
+    # thirty runs (see sim/sweep.py):
+    #
+    #   cheap     100% caught, 1 false alarm,  1,872 calls
+    #   balanced  100% caught, 0 false alarms, 1,958 calls   <- this one
+    #   precise   100% caught, 1 false alarm,  2,385 calls
+    #
+    # Spending more is not simply better: the most aggressive setting samples
+    # marginal situations often enough to talk itself into one false alarm,
+    # while costing 22% more. Balanced is clean on both counts for 5% more than
+    # the cheapest option.
     CADENCE = {
-        IDLE:       (300.0, 22),   # every 5 min, coarse
-        WATCHING:   (120.0, 45),   # every 2 min, full sample
-        CONFIRMING: (60.0, 60),    # every minute, oversampled
-        ALERT:      (60.0, 60),
-        STANDDOWN:  (300.0, 22),
+        IDLE:       (300.0, 30),   # every 5 min, coarse
+        WATCHING:   (90.0, 80),    # every 90 s once something is happening
+        CONFIRMING: (60.0, 110),   # every minute, oversampled
+        ALERT:      (60.0, 110),
+        STANDDOWN:  (300.0, 30),
     }
 
     def __init__(self, city: City, client: CamaraClient, registry: DeviceRegistry,

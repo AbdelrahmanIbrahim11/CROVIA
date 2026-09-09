@@ -133,8 +133,12 @@ class ModelPolicy:
         from langchain_groq import ChatGroq
         # The notebook passed a Groq model name to Google's client, which cannot
         # work: llama3-70b-8192 is served by Groq, not by Gemini.
+        # The default is what the project's Groq account actually serves. Groq
+        # retires model names often, so CROVIA_MODEL overrides it without a code
+        # change, and an unknown name falls back to the rules rather than
+        # stopping detection.
         self.model = ChatGroq(
-            model=model_name or os.getenv("CROVIA_MODEL", "llama-3.3-70b-versatile"),
+            model=model_name or os.getenv("CROVIA_MODEL", "openai/gpt-oss-120b"),
             temperature=0,
         )
         self.fallback = DeterministicPolicy()

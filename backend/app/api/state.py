@@ -14,6 +14,7 @@ from sqlalchemy.orm import Session
 
 from app.core.city import city
 from app.runtime import get_engine
+from app.ai import graph as ai
 from app.services import enrollment
 from app.usersDB.db import getdb
 
@@ -70,6 +71,34 @@ def get_state():
             "panel": e.registry.panel_size(),
             "located": len(e.registry.device_district),
         },
+    }
+
+
+@router.post("/agent/step")
+def agent_step():
+    """
+    Run one decision cycle.
+
+    The agent picks where to look and what to spend; the deterministic rules
+    then judge whether anyone is in danger. Each result carries both, so the
+    reasoning and the verdict can be read side by side.
+    """
+    return {"decisions": ai.run_once(get_engine())}
+
+
+@router.get("/agent/policy")
+def agent_policy():
+    e = get_engine()
+    policy = getattr(e, "_policy", None) or ai.build_policy()
+    e._policy = policy
+    return {
+        "policy": policy.name,
+        "explanation": (
+            "A model chooses where to look and what to spend. Whether people are in "
+            "danger is always decided by deterministic rules, so an alarm can be "
+            "audited afterwards."
+        ),
+        "tools": ai.T.TOOL_SPECS,
     }
 
 

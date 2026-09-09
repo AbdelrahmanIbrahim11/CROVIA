@@ -21,7 +21,7 @@
     "@gluestack-ui/themed": "^1.1.73",
     "@turf/circle": "^7.4.0",
     "@turf/helpers": "^7.4.0",
-    "expo": "^57.0.0",
+    "expo": "~57.0.21",
     "expo-font": "^57.0.3",
     "expo-status-bar": "~57.0.1",
     "maplibre-gl": "^6.7.0",
@@ -29,12 +29,12 @@
     "react": "19.2.3",
     "react-dom": "19.2.3",
     "react-native": "0.86.3",
-    "react-native-svg": "^15.15.5",
+    "react-native-svg": "15.15.4",
     "react-native-web": "^0.21.2"
   },
   "devDependencies": {
     "@types/react": "^19.2.18",
     "puppeteer-core": "^24.43.1",
-    "typescript": "^5.9.3"
+    "typescript": "~6.0.3"
   }
 }

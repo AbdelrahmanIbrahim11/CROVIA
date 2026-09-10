@@ -16,7 +16,7 @@ from app.core.city import city
 from app import runtime
 from app.runtime import get_engine
 from app.ai import graph as ai
-from app.services import enrollment
+from app.services import enrollment, incidents
 from app.usersDB.db import getdb
 
 router = APIRouter(prefix="/api", tags=["state"])
@@ -118,6 +118,18 @@ def get_alerts():
 class ConsentIn(BaseModel):
     phone_number: str
     scope: str = "safety_monitoring"
+
+
+@router.get("/incidents")
+def get_incidents(limit: int = 50, db: Session = Depends(getdb)):
+    """
+    Alarms that have been recorded, newest first.
+
+    /alerts is what is happening now and lives in memory. This is the history,
+    and it survives a restart — which is what makes baselines from real days
+    possible later.
+    """
+    return {"incidents": incidents.history(db, limit=limit)}
 
 
 @router.post("/consent")

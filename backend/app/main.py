@@ -25,7 +25,7 @@ from app.core.city import city
 from app.db.redis import close_redis, get_redis
 from app.respones.responses import UserResponse
 from app.runtime import engine_now, get_engine, step_twin
-from app.services import enrollment
+from app.services import enrollment, incidents
 from app.usersDB import services as dbServices
 from app.usersDB.db import create_table, getdb
 from app.usersDB.dto import user_dto
@@ -92,6 +92,25 @@ async def lifespan(app: FastAPI):
             db.close()
     except Exception as exc:
         logger.warning("could not restore monitored devices: %s", exc)
+
+    # Write every alarm down. The engine calls these; it never holds a session
+    # itself, so a database problem can slow the record but not the detection.
+    def _record_alarm(record: dict) -> None:
+        db = next(getdb())
+        try:
+            incidents.open_incident(db, record)
+        finally:
+            db.close()
+
+    def _close_alarm(zone_id: str, _t: float) -> None:
+        db = next(getdb())
+        try:
+            incidents.close_incident(db, zone_id)
+        finally:
+            db.close()
+
+    engine.on_alert_raised = _record_alarm
+    engine.on_alert_cleared = _close_alarm
 
     logger.info("city: %s, %d districts, %d zones",
                 city.meta["label"], len(city.districts), len(city.zones))

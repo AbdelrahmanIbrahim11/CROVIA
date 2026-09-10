@@ -26,6 +26,7 @@ import random
 import time
 from collections import defaultdict, deque
 from dataclasses import dataclass, field
+from typing import Callable
 
 from app.camara.client import Area, ApiError, CamaraClient
 from app.core.budget import Budget, Ledger, Request
@@ -179,6 +180,12 @@ class Engine:
         self.schedule: list[ScheduledEvent] = []
         self.predictions: list[dict] = []
         self._announced: set[str] = set()
+        # Optional hooks so an alarm can be written somewhere durable. They stay
+        # optional because the engine has to run inside the simulation with no
+        # database at all, and a detection engine that needs a database to
+        # decide anything is a detection engine that stops during an outage.
+        self.on_alert_raised: Callable[[dict], None] | None = None
+        self.on_alert_cleared: Callable[[str, float], None] | None = None
 
     # ------------------------------------------------------------------
 
@@ -501,19 +508,37 @@ class Engine:
             if v.dangerous:
                 if not zs.alerted:
                     zs.alerted = True
-                    self.alerts.append({"t": self.now, **v.to_dict()})
+                    record = {"t": self.now, **v.to_dict()}
+                    self.alerts.append(record)
                     self.log("alert", f"{v.hazard_label}: {v.reason}", **v.to_dict())
+                    self._notify(self.on_alert_raised, record)
                 ds.state = ALERT
             else:
                 if zs.alerted and rate <= 0:
                     zs.alerted = False
                     self.log("standdown", f"{req.zone_id[5:]} is clearing", zone=req.zone_id)
+                    self._notify(self.on_alert_cleared, req.zone_id, self.now)
                 # The district stays in ALERT while ANY of its zones is alerted.
                 any_alerted = any(self.zones[z.id].alerted
                                   for z in self.city.zones_of(req.district_id))
                 ds.state = ALERT if any_alerted else (WATCHING if rate > 0 else IDLE)
 
         return verdicts
+
+    def _notify(self, hook: Callable | None, *args) -> None:
+        """
+        Run a hook without ever letting it break detection.
+
+        A database that is briefly unreachable must not stop the engine from
+        judging the next zone. The failure is logged as a trace entry so it is
+        visible rather than silent.
+        """
+        if hook is None:
+            return
+        try:
+            hook(*args)
+        except Exception as exc:
+            self.log("hook_failed", f"could not record the alarm: {exc}")
 
     def snapshot(self) -> dict:
         return {

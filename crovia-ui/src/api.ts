@@ -213,6 +213,57 @@ export async function deleteOperatorZone(zoneId: string): Promise<boolean> {
   }
 }
 
+export async function markWarningRead(id: string): Promise<boolean> {
+  try {
+    const r = await fetch(`${API_BASE}/api/warnings/${id}/read`, {
+      method: 'POST',
+      headers: authHeader(),
+    });
+    return r.ok;
+  } catch {
+    return false;
+  }
+}
+
+export type ConsentState = {
+  monitored: boolean;
+  phone_number?: string;
+  granted_at?: string | null;
+  revoked_at?: string | null;
+};
+
+/** Whether CROVIA is watching the person signed in. They can always ask. */
+export async function fetchMyConsent(): Promise<ConsentState | null> {
+  try {
+    const r = await fetch(`${API_BASE}/api/consent/me`, { headers: authHeader() });
+    return r.ok ? ((await r.json()) as ConsentState) : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Turn monitoring on or off for the person signed in.
+ *
+ * The backend refuses any number that is not their own, so passing the number
+ * here cannot be used to change somebody else's setting.
+ */
+export async function setMyConsent(
+  phoneNumber: string,
+  on: boolean,
+): Promise<boolean> {
+  try {
+    const r = await fetch(`${API_BASE}/api/consent`, {
+      method: on ? 'POST' : 'DELETE',
+      headers: { 'Content-Type': 'application/json', ...authHeader() },
+      body: JSON.stringify({ phone_number: phoneNumber }),
+    });
+    return r.ok;
+  } catch {
+    return false;
+  }
+}
+
 /** A zone's severity, mapped onto the map's 1-4 colour scale. */
 function levelFor(v: ZoneVerdict | null): Level {
   if (!v) return 1;

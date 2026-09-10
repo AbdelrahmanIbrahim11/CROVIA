@@ -103,6 +103,16 @@ def register(body: RegisterIn, db: Session = Depends(getdb)):
     monitored = False
     if body.user_type == "normal" and body.consent and body.number:
         enrollment.grant_consent(db, body.number)
+        # Consent on its own watches nobody. It records permission; enrolling is
+        # what puts the device on the list the engine reads at startup. Doing
+        # only the first leaves a person who ticked the box, believes they are
+        # protected, and is not on any list.
+        #
+        # They join the panel rather than the sentinel fleet. The panel is a
+        # uniform sample used for counting, and it is the role a person who
+        # simply signed up genuinely belongs to - sentinels are placed
+        # deliberately where an event is expected.
+        enrollment.enrol(db, body.number, enrollment.PANEL)
         monitored = True
 
     logger.info("registered a %s account (monitored=%s)", body.user_type, monitored)

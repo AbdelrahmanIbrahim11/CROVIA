@@ -31,6 +31,7 @@ from sqlalchemy.orm import Session
 
 from app.auth.deps import current_user
 from app.auth.security import create_access_token
+from app.services import enrollment
 from app.usersDB import services as dbServices
 from app.usersDB.db import getdb
 
@@ -49,6 +50,11 @@ class RegisterIn(BaseModel):
     # ever monitored. An operator watches the city; they are not watched.
     number: str | None = None
     user_type: str = "normal"
+    # Whether the person agreed to be monitored, asked at the moment they sign
+    # up rather than buried in settings afterwards. Defaults to False: silence
+    # is not agreement, and an account created without an explicit yes is an
+    # account CROVIA does not watch.
+    consent: bool = False
 
 
 class LoginIn(BaseModel):
@@ -91,9 +97,18 @@ def register(body: RegisterIn, db: Session = Depends(getdb)):
     if not user:
         raise HTTPException(status_code=400, detail="could not create the account")
 
-    logger.info("registered a %s account", body.user_type)
+    # A citizen who agreed is enrolled straight away, in the same request. Doing
+    # it later would leave a window where an account exists, the person believes
+    # they are protected, and nothing is watching them.
+    monitored = False
+    if body.user_type == "normal" and body.consent and body.number:
+        enrollment.grant_consent(db, body.number)
+        monitored = True
+
+    logger.info("registered a %s account (monitored=%s)", body.user_type, monitored)
     return {"username": str(user.username), "email": str(user.email),
-            "role": body.user_type, "user_id": str(user.id)}
+            "role": body.user_type, "user_id": str(user.id),
+            "monitored": monitored}
 
 
 @router.post("/login", response_model=TokenOut)

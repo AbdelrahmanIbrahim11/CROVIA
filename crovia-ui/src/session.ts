@@ -98,6 +98,8 @@ export async function register(input: {
   email: string;
   number?: string;
   userType: Role;
+  /** Whether they agreed to be monitored. False unless they actually said yes. */
+  consent?: boolean;
 }): Promise<{ ok: true } | { ok: false; error: string }> {
   try {
     const r = await fetch(`${API_BASE}/auth/register`, {
@@ -109,6 +111,7 @@ export async function register(input: {
         email: input.email,
         number: input.number,
         user_type: input.userType,
+        consent: input.consent ?? false,
       }),
     });
     if (!r.ok) {

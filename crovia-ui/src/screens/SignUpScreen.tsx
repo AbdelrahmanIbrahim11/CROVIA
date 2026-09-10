@@ -26,6 +26,7 @@ export function SignUpScreen({
   const [email, setEmail] = useState('');
   const [number, setNumber] = useState('');
   const [password, setPassword] = useState('');
+  const [consent, setConsent] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -46,6 +47,7 @@ export function SignUpScreen({
       number: number.replace(/\s+/g, ''),
       password,
       userType: 'normal',
+      consent,
     });
     setBusy(false);
     if (!res.ok) {
@@ -131,6 +133,42 @@ export function SignUpScreen({
                       color={textPrimary} placeholderTextColor="#6B7280" />
                   </Input>
                 </VStack>
+
+                {/*
+                  Asked here, in words, at the moment the account is made.
+                  Unticked to begin with: an account created without an explicit
+                  yes is an account CROVIA does not watch.
+                */}
+                <Pressable onPress={() => setConsent((c) => !c)} accessibilityRole="checkbox"
+                  accessibilityState={{ checked: consent }}>
+                  <HStack space="md" alignItems="flex-start"
+                    bg={consent ? 'rgba(242, 169, 59, 0.10)' : 'transparent'}
+                    borderWidth={1} borderColor={consent ? accentColor : '#333A54'}
+                    borderRadius="$lg" p="$3">
+                    <Center w={22} h={22} borderRadius="$sm" borderWidth={2}
+                      borderColor={consent ? accentColor : '#6B7280'}
+                      bg={consent ? accentColor : 'transparent'} mt="$1">
+                      {consent ? (
+                        <Text size="xs" fontWeight="$bold" color="#161A28">✓</Text>
+                      ) : null}
+                    </Center>
+                    <VStack flex={1} space="xs">
+                      <Text size="sm" fontWeight="$bold" color={textPrimary}>
+                        Warn me about dangerous crowds near me
+                      </Text>
+                      <Text size="xs" color={textMuted} lineHeight="$sm">
+                        CROVIA asks the mobile network whether your phone is inside a
+                        crowded area. It never asks where you are, only yes or no, and it
+                        never turns on your GPS. You can switch this off at any time and
+                        it stops immediately.
+                      </Text>
+                      <Text size="xs" color={textMuted}>
+                        Leave it unticked and you can still use the map. You just will not
+                        be warned.
+                      </Text>
+                    </VStack>
+                  </HStack>
+                </Pressable>
 
                 {error ? (
                   <Box bg="rgba(255, 68, 68, 0.12)" borderWidth={1} borderColor="#ff4444" borderRadius="$lg" p="$3">

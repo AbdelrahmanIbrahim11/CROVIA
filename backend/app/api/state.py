@@ -294,6 +294,35 @@ def _own_number_or_operator(db: Session, user: dict, phone_number: str) -> None:
                             detail="you can only change consent for your own number")
 
 
+@router.get("/consent/me")
+def my_consent(db: Session = Depends(getdb), user: dict = Depends(current_user)):
+    """
+    Whether CROVIA is watching the person calling, and since when.
+
+    A person is entitled to know this about themselves without asking anybody,
+    which is why it is a plain endpoint on their own account rather than
+    something only operations can look up.
+    """
+    from app.usersDB.models import device_consent
+
+    phone = phone_of(db, user)
+    if not phone:
+        return {"monitored": False,
+                "note": "only citizen accounts are ever monitored"}
+    row = (db.query(device_consent)
+             .filter(device_consent.phone_number == phone).one_or_none())
+    if row is None:
+        return {"monitored": False, "phone_number": phone}
+    return {
+        "monitored": row.revoked_at is None,
+        "phone_number": phone,
+        "hashed_id": row.hashed_id,
+        "granted_at": row.granted_at.isoformat() if row.granted_at else None,
+        "revoked_at": row.revoked_at.isoformat() if row.revoked_at else None,
+        "scope": row.scope,
+    }
+
+
 @router.post("/consent")
 def post_consent(body: ConsentIn, db: Session = Depends(getdb),
                  user: dict = Depends(current_user)):

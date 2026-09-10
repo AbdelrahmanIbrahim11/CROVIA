@@ -179,10 +179,26 @@ class NokiaClient:
                           district: str | None = None) -> dict:
         self.ledger.record(TIER_RETRIEVE, district)
         loc = self._nac.location.retrieve(device={"phone_number": phone}, max_age=max_age_s)
-        if loc is None or loc.latitude is None:
+        # The response does not carry latitude and longitude at the top level.
+        # CAMARA returns an `area`, and for a CIRCLE the coordinates sit inside
+        # `area.center`. The SDK's typed model declares only `area_type` and
+        # keeps the rest as extra fields, so `center` arrives as a plain dict.
+        #
+        # This previously read loc.latitude, which does not exist on the model
+        # and would have raised AttributeError on the first real call.
+        area = getattr(loc, "area", None) if loc is not None else None
+        center = getattr(area, "center", None) if area is not None else None
+        if not isinstance(center, dict) or center.get("latitude") is None:
+            # No fix fresh enough to answer with. This is an expected outcome,
+            # not an error: the caller drops the device from the sample.
             return {"status": "UNKNOWN"}
-        return {"status": "OK", "latitude": loc.latitude, "longitude": loc.longitude,
-                "radius_m": float(getattr(loc, "radius", 400) or 400)}
+        return {"status": "OK",
+                "latitude": float(center["latitude"]),
+                "longitude": float(center["longitude"]),
+                # The reported uncertainty. Carried through rather than dropped,
+                # because an accuracy of 2 km and one of 200 m are different
+                # facts and the map draws them differently.
+                "radius_m": float(getattr(area, "radius", None) or 400)}
 
     def create_congestion_subscription(self, phone: str, sink: str, expire_s: int) -> str:
         self.ledger.record(TIER_CONGESTION_SUB)

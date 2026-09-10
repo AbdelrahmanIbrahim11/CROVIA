@@ -1,14 +1,14 @@
 from app.usersDB import models
 from sqlalchemy.orm import Session
-from sqlalchemy import and_
+
 from app.usersDB.schemas import normal_userCreate, admin_userCreate, authority_userCreate
 from app.usersDB.models import normal_user, admin_user, authority_user
 from typing import Literal
-import bcrypt
+from app.auth.security import hash_password, verify_password
 
 
 def __create_normal_user(db: Session, userdata: normal_userCreate):
-    userdata.password = str(__hash_pwd(userdata.password))
+    userdata.password = hash_password(userdata.password)
 
     normal_user_instance = normal_user(**userdata.model_dump())
     db.add(normal_user_instance)
@@ -18,7 +18,7 @@ def __create_normal_user(db: Session, userdata: normal_userCreate):
 
 
 def __create_admin_user(db: Session, userdata: admin_userCreate):
-    userdata.password = str(__hash_pwd(userdata.password))
+    userdata.password = hash_password(userdata.password)
 
     admin_user_instance = admin_user(**userdata.model_dump())
     db.add(admin_user_instance)
@@ -28,7 +28,7 @@ def __create_admin_user(db: Session, userdata: admin_userCreate):
 
 
 def __create_authority_user(db: Session, userdata: authority_userCreate):
-    userdata.password = str(__hash_pwd(userdata.password))
+    userdata.password = hash_password(userdata.password)
 
     authority_user_instance = authority_user(**userdata.model_dump())
     db.add(authority_user_instance)
@@ -38,72 +38,60 @@ def __create_authority_user(db: Session, userdata: authority_userCreate):
 
 
 def __verify_normal_user(db: Session, userdata: normal_userCreate):
-    user_query = (
-        db.query(normal_user)
-        .where(
-            and_(
-                normal_user.email == userdata.email,
-                normal_user.number == userdata.number,
-            )
-        )
-        .first()
-    )
+    """
+    Find the account by email, then check the password and RETURN THAT ANSWER.
 
-    if user_query:
-        user = user_query[0]
-        __check_pwd(userdata.password, user.password)
-        print("Access granted")
-        return True
-
-    print("Access denied")
-    return False
+    The previous version indexed .first() as if it were a tuple, which raised
+    TypeError on every attempt, and it discarded the result of the password
+    check - so once that crash was fixed, any password would have been accepted
+    for any email on file.
+    """
+    user = db.query(normal_user).where(normal_user.email == userdata.email).first()
+    if user is None:
+        return None
+    if not verify_password(userdata.password, str(user.password)):
+        return None
+    return user
 
 
 def __verify_admin_user(db: Session, userdata: admin_userCreate):
-    user_query = (
-        db.query(admin_user)
-        .where(
-            and_(
-                admin_user.email == userdata.email,
-            )
-        )
-        .first()
-    )
+    """
+    Find the account by email, then check the password and RETURN THAT ANSWER.
 
-    if user_query:
-        user = user_query[0]
-        __check_pwd(userdata.password, user.password)
-        print("Access granted")
-        return True
-
-    print("Access denied")
-    return False
+    The previous version indexed .first() as if it were a tuple, which raised
+    TypeError on every attempt, and it discarded the result of the password
+    check - so once that crash was fixed, any password would have been accepted
+    for any email on file.
+    """
+    user = db.query(admin_user).where(admin_user.email == userdata.email).first()
+    if user is None:
+        return None
+    if not verify_password(userdata.password, str(user.password)):
+        return None
+    return user
 
 
 def __verify_authority_user(db: Session, userdata: authority_userCreate):
-    user_query = (
-        db.query(authority_user)
-        .where(
-            and_(
-                authority_user.email == userdata.email,
-            )
-        )
-        .first()
-    )
+    """
+    Find the account by email, then check the password and RETURN THAT ANSWER.
 
-    if user_query:
-        user = user_query[0]
-        __check_pwd(userdata.password, user.password)
-        print("Access granted")
-        return True
-
-    print("Access denied")
-    return False
+    The previous version indexed .first() as if it were a tuple, which raised
+    TypeError on every attempt, and it discarded the result of the password
+    check - so once that crash was fixed, any password would have been accepted
+    for any email on file.
+    """
+    user = db.query(authority_user).where(authority_user.email == userdata.email).first()
+    if user is None:
+        return None
+    if not verify_password(userdata.password, str(user.password)):
+        return None
+    return user
 
 
 def verify_user(
     db: Session, userdata: dict, user_role: Literal["normal", "admin", "authority"]
 ):
+    """Returns the user row on success, None on failure. Falsy means refused."""
     if user_role == "normal":
         return __verify_normal_user(db, userdata=normal_userCreate(**userdata))
     elif user_role == "admin":
@@ -135,10 +123,4 @@ def signin_existing_mail(db: Session, email: str):
     return False
 
 
-def __hash_pwd(password: str, round=12) -> bytes:
-    pwd = bcrypt.hashpw(password=password.encode(), salt=bcrypt.gensalt(rounds=round))
-    return pwd
-
-
-def __check_pwd(password: str, hash: bytes) -> bool:
     return bcrypt.checkpw(password=password.encode(), hashed_password=hash)

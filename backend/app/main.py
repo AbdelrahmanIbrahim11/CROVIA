@@ -19,16 +19,14 @@ from fastapi import Depends, FastAPI, HTTPException, Response, status
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
 
+from app.api.auth import router as auth_router
 from app.api.state import router as state_router
 from app.api.webhooks import router as webhook_router
 from app.core.city import city
 from app.db.redis import close_redis, get_redis
-from app.respones.responses import UserResponse
 from app.runtime import engine_now, get_engine, step_twin
 from app.services import enrollment, incidents, operator_zones, warnings
-from app.usersDB import services as dbServices
 from app.usersDB.db import create_table, getdb
-from app.usersDB.dto import user_dto
 
 logging.basicConfig(
     level=logging.INFO,
@@ -164,6 +162,7 @@ app.add_middleware(
 )
 
 app.include_router(webhook_router)
+app.include_router(auth_router)
 app.include_router(state_router)
 
 
@@ -193,27 +192,3 @@ async def health():
 # Accounts
 # ---------------------------------------------------------------------------
 
-@app.post("/signin", response_model=UserResponse)
-def signin(user_Data: user_dto, db: Session = Depends(getdb)):
-    if dbServices.signin_existing_mail(db=db, email=user_Data.email):
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST,
-                            detail="The email already exists!")
-
-    fields = {"username": user_Data.username, "password": user_Data.password,
-              "email": user_Data.email}
-    if user_Data.user_type == "normal":
-        fields["number"] = user_Data.number
-    role = "normal" if user_Data.user_type == "normal" else "admin"
-    user = dbServices.create_user(db=db, userdata=fields, user_role=role)
-    if not user:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="An error occured!")
-
-    return UserResponse(username=str(user.username), email=str(user.email))
-
-
-@app.get("/login", response_model=UserResponse)
-def login(user_Data: user_dto, db: Session = Depends(getdb)):
-    if not dbServices.verify_user(db=db, userdata=user_Data.model_dump(),
-                                  user_role=user_Data.user_type):
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Not found")
-    return UserResponse(username=user_Data.username, email=user_Data.email)

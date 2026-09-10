@@ -13,3 +13,4 @@ email-validator        # required by pydantic EmailStr in usersDB/schemas.py
 redis                  # used by app/db/redis.py
 psycopg2-binary        # PostgreSQL driver. Swap this if you choose another database.
 uvicorn                # the server that runs FastAPI
+PyJWT

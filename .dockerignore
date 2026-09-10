@@ -8,22 +8,31 @@
 **/__pycache__/
 **/*.pyc
 
-# Local database. The deployment uses Postgres.
+# Local database. A deployment uses Postgres.
 **/*.db
 
 # Secrets. These must arrive as environment variables, never baked into a layer.
 **/.env
 !**/.env.example
 
-# The app is built and served separately; only its geography file is needed,
-# and the Dockerfile copies that one path explicitly.
-crovia-ui/
-!crovia-ui/src/geo/
+# The app is built and served separately. Only its geography file is needed.
+#
+# Each unwanted folder is named directly rather than excluding crovia-ui/ and
+# re-including the one path underneath. Docker does not reliably descend into a
+# directory it has already excluded, so the negation can silently lose the
+# geography file - and the build then fails at import with "no such file",
+# which is a confusing way to find out.
+crovia-ui/node_modules/
+crovia-ui/.expo/
+crovia-ui/dist/
+crovia-ui/web-build/
+crovia-ui/android/
+crovia-ui/ios/
+crovia-ui/assets/
+crovia-ui/public/
 
 .git/
 .github/
-**/.expo/
-**/dist/
 **/.DS_Store
 Langgraph_structure/
 Docs/

@@ -128,6 +128,9 @@ def check_live(api_key: str) -> None:
 
     print("NOKIA_NAC_API_KEY is set - calling the real network.\n")
     client = NokiaClient(api_key=api_key)
+    print(f"  host: {client.host}")
+    print("  (if every call fails with an auth error, the key may belong to a\n"
+          "   different host - set NOKIA_NAC_HOST)\n")
 
     print("Location Verification against Nokia's test numbers")
     print(f"  area: Lusail north concourse, {LUSAIL_RAMP.radius_m:.0f} m radius\n")

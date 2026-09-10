@@ -149,9 +149,23 @@ class NokiaClient:
     """The real Network as Code API."""
 
     def __init__(self, api_key: str, ledger: Ledger | None = None,
-                 host: str = "network-as-code.nokia.rapidapi.com") -> None:
+                 host: str | None = None) -> None:
+        """
+        Talk to Nokia.
+
+        The host is configurable because a key from Nokia's own developer portal
+        does not go to the same address as a key bought through RapidAPI, and a
+        key pointed at the wrong host fails with an authentication error that
+        looks exactly like a bad key. Set NOKIA_NAC_HOST if yours is not the
+        RapidAPI one.
+        """
+        import os
+
         import network_as_code as nac
-        self._nac = nac.NetworkAsCodeApi(rapidapi_host=host, api_key=api_key)
+
+        self.host = host or os.getenv("NOKIA_NAC_HOST",
+                                      "network-as-code.nokia.rapidapi.com")
+        self._nac = nac.NetworkAsCodeApi(rapidapi_host=self.host, api_key=api_key)
         self.ledger = ledger or Ledger()
 
     def verify_location(self, phone: str, area: Area, district: str | None = None) -> dict:

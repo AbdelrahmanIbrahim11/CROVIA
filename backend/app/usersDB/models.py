@@ -157,6 +157,17 @@ class incident(base):
     fired_by = Column(String(40), nullable=True)
     reason = Column(Text, nullable=True)
 
+    # Who took responsibility, and what they did about it.
+    #
+    # An alarm nobody answered and an alarm somebody answered look identical
+    # without these. After an incident the first question asked is who knew and
+    # when, and the second is what was done, so both are recorded rather than
+    # reconstructed from memory afterwards.
+    acknowledged_at = Column(DateTime(timezone=True), nullable=True)
+    acknowledged_by = Column(String(80), nullable=True)
+    closed_by = Column(String(80), nullable=True)
+    action_taken = Column(Text, nullable=True)
+
 
 class alert_delivery(base):
     """

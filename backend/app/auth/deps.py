@@ -64,7 +64,8 @@ def require_role(minimum: str):
         if RANK.get(user.get("role", ""), 0) < needed:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
-                detail=f"this needs a {minimum} account")
+                detail=f"this needs {'an' if minimum[0] in 'aeiou' else 'a'} "
+                       f"{minimum} account")
         return user
 
     return check

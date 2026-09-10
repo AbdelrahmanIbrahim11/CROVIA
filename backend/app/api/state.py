@@ -12,7 +12,8 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
-from app.auth.deps import current_user, phone_of, require_operator
+from app.auth.deps import (current_user, phone_of, require_authority,
+                           require_operator)
 from app.core.registry import hash_phone
 from app.core.city import city
 from app import runtime
@@ -133,6 +134,46 @@ def get_incidents(limit: int = 50, db: Session = Depends(getdb),
     possible later.
     """
     return {"incidents": incidents.history(db, limit=limit)}
+
+
+class IncidentActionIn(BaseModel):
+    """What the responder did. Free text, because the real answer varies."""
+
+    action_taken: str | None = None
+
+
+@router.post("/incidents/{incident_id}/acknowledge")
+def acknowledge_incident(incident_id: str, db: Session = Depends(getdb),
+                         user: dict = Depends(require_authority)):
+    """
+    Say that a named person has seen this alarm and is dealing with it.
+
+    Authority only. This is a record of responsibility, so it has to carry a
+    real name - which is why it takes the name from the token rather than from
+    the request body, where the caller could type anything.
+    """
+    row = incidents.acknowledge(db, incident_id, who=user.get("username", "unknown"))
+    if row is None:
+        raise HTTPException(status_code=404, detail="no such incident")
+    return row
+
+
+@router.post("/incidents/{incident_id}/close")
+def close_incident(incident_id: str, body: IncidentActionIn,
+                   db: Session = Depends(getdb),
+                   user: dict = Depends(require_authority)):
+    """
+    Close an incident because somebody dealt with it, and record what they did.
+
+    Different from the engine closing a zone when the crowd leaves. "It cleared
+    on its own" and "we opened two more gates" are different lessons for the
+    next event, so both are kept.
+    """
+    row = incidents.close_by_hand(db, incident_id, who=user.get("username", "unknown"),
+                                  action_taken=body.action_taken)
+    if row is None:
+        raise HTTPException(status_code=404, detail="no such incident")
+    return row
 
 
 @router.get("/warnings/me")

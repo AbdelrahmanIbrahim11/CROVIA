@@ -25,10 +25,11 @@ from __future__ import annotations
 
 import logging
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from pydantic import BaseModel, EmailStr
 from sqlalchemy.orm import Session
 
+from app.auth import ratelimit
 from app.auth.deps import current_user
 from app.auth.security import create_access_token
 from app.services import enrollment
@@ -122,10 +123,21 @@ def register(body: RegisterIn, db: Session = Depends(getdb)):
 
 
 @router.post("/login", response_model=TokenOut)
-def login(body: LoginIn, db: Session = Depends(getdb)):
+def login(body: LoginIn, request: Request, db: Session = Depends(getdb)):
     if body.user_type not in ROLES:
         raise HTTPException(status_code=422,
                             detail=f"user_type must be one of {', '.join(ROLES)}")
+
+    # Checked before the password, so a blocked attempt costs neither a bcrypt
+    # comparison nor a database read - which is what stops the rate limiter
+    # itself becoming the way to overload the service.
+    address = request.client.host if request.client else "unknown"
+    wait = ratelimit.check(body.email, address)
+    if wait is not None:
+        raise HTTPException(
+            status_code=429,
+            detail=f"too many sign-in attempts - try again in {int(wait // 60) + 1} minutes",
+            headers={"Retry-After": str(int(wait))})
 
     user = dbServices.verify_user(
         db=db,
@@ -134,10 +146,12 @@ def login(body: LoginIn, db: Session = Depends(getdb)):
         user_role=body.user_type,
     )
     if not user:
+        ratelimit.record_failure(body.email, address)
         # Same message either way, so this cannot be used to discover which
         # email addresses have accounts.
         raise HTTPException(status_code=401, detail="wrong email or password")
 
+    ratelimit.clear(body.email, address)
     token, ttl = create_access_token(user_id=str(user.id), role=body.user_type,
                                      username=str(user.username), email=str(user.email))
     return TokenOut(access_token=token, expires_in=ttl, role=body.user_type,

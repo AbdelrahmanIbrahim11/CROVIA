@@ -52,6 +52,14 @@ def _secret() -> str:
     key = os.getenv("JWT_SECRET", "").strip()
     if key:
         return key
+    # In a deployment a missing key is a refusal, not a warning. A random key
+    # per process means tokens stop working the moment the host restarts the
+    # service or runs a second copy of it, and both happen without anyone
+    # noticing, so it would look like users being signed out at random.
+    if os.getenv("CROVIA_ENV", "local").lower() != "local":
+        raise RuntimeError(
+            "JWT_SECRET must be set when CROVIA_ENV is not 'local'. "
+            "Generate one with: python -c \"import secrets; print(secrets.token_urlsafe(48))\"")
     if not hasattr(_secret, "_generated"):
         _secret._generated = secrets.token_urlsafe(48)
         logger.warning("JWT_SECRET is not set - using a random key for this run. "

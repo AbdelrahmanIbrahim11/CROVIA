@@ -153,9 +153,19 @@ app = FastAPI(
 )
 
 # The Expo app runs from a different origin in development.
+#
+# "*" is fine locally and wrong in a deployment: it lets any website call this
+# API with a visitor's browser. So a deployment must name its origins, and the
+# service refuses to start rather than quietly allowing everyone.
+_origins = [o.strip() for o in os.getenv("CORS_ORIGINS", "*").split(",") if o.strip()]
+if os.getenv("CROVIA_ENV", "local").lower() != "local" and _origins == ["*"]:
+    raise RuntimeError(
+        "CORS_ORIGINS must name the app's real address when CROVIA_ENV is not "
+        "'local', for example https://crovia.example.com")
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=os.getenv("CORS_ORIGINS", "*").split(","),
+    allow_origins=_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

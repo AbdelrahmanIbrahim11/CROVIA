@@ -265,6 +265,21 @@ class Engine:
             return
         self.districts[district].high_devices[hashed] = self.now
 
+    def on_congestion_device(self, hashed: str, level: str, confidence: int) -> None:
+        """
+        Congestion for a device we already know, identified by its own webhook
+        address rather than by anything in the message.
+
+        The notification itself names neither a device nor a subscription, so
+        this is the only way the signal can be placed on the map at all.
+        """
+        if level not in ("High", "Medium") or confidence < 50:
+            return
+        district = self.registry.district_of(hashed)
+        if not district:
+            return
+        self.districts[district].high_devices[hashed] = self.now
+
     def on_geofence(self, sub_id: str, event_type: str) -> None:
         hashed = self.registry.sub_device.get(sub_id)
         area = self.registry.sub_area.get(sub_id)

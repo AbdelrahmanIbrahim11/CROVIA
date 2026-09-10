@@ -250,11 +250,16 @@ class NokiaClient:
             # Geofencing carries the token in sink_credential rather than in the
             # webhook block. Same purpose: it is handed back to us on every
             # notification so the endpoint can tell Nokia from a stranger.
+            # camelCase on purpose. The SDK converts the fields it declares
+            # (credential_type) but passes anything else through untouched, and
+            # CAMARA wants accessToken, accessTokenType and
+            # accessTokenExpiresUtc. Sent as snake_case, Nokia answers 422
+            # naming each missing field.
             sink_credential={
-                "credential_type": "ACCESSTOKEN",
-                "access_token": self.webhook_token,
-                "access_token_type": "bearer",
-                "access_token_expires_utc": expires.isoformat(),
+                "credentialType": "ACCESSTOKEN",
+                "accessToken": self.webhook_token,
+                "accessTokenType": "bearer",
+                "accessTokenExpiresUtc": expires.isoformat(),
             },
             types=["org.camaraproject.geofencing-subscriptions.v0.area-entered"],
             config={

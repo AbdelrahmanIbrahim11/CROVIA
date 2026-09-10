@@ -177,23 +177,38 @@ def subscribe_device(db: Session, engine, phone: str, district_id: str | None) -
     from app.usersDB.models import subscription_record
 
     hashed = hash_phone(phone)
+    # Each device gets its own webhook address, ending in its hash.
+    #
+    # A real congestion notification from the network names neither a device
+    # nor a subscription - `source` turned out to be the event type, not a URL
+    # with an id in it. The address it arrives at is therefore the only thing
+    # that says who it is about. Sending every device to one shared path made
+    # every notification unattributable.
+    #
+    # The hash is safe to put in a URL: it is not a phone number, and it is
+    # already what every part of the system outside the vault uses.
     sink = f"{__import__('os').getenv('WEBHOOK_BASE_URL', 'http://localhost:8000')}/webhooks"
     made: list[str] = []
 
     try:
-        sub = engine.client.create_congestion_subscription(phone, f"{sink}/congestion", 7 * 86400)
+        sub = engine.client.create_congestion_subscription(
+            phone, f"{sink}/congestion/{hashed}", 7 * 86400)
         engine.registry.bind_subscription(sub, hashed, "congestion", district_id or "")
         db.add(subscription_record(subscription_id=sub, hashed_id=hashed, kind="congestion"))
         made.append(sub)
-    except ApiError as exc:
-        return {"error": f"congestion subscription failed: {exc}"}
+    except Exception as exc:
+        # Deliberately broad. The Nokia SDK raises its own exception types, not
+        # ours, and letting one escape turned a partially successful enrolment
+        # into a 500 that also discarded the subscription that HAD been
+        # created - so the operator was billed for it and nothing recorded it.
+        return {"error": f"congestion subscription failed: {type(exc).__name__}: {exc}"}
 
     if district_id and district_id in city.districts:
         d = city.districts[district_id]
         try:
             gsub, evt = engine.client.create_geofence_subscription(
                 phone, district_id, Area(d.center.lat, d.center.lon, d.radius_m),
-                f"{sink}/geofencing", 7 * 86400, initial_event=True)
+                f"{sink}/geofencing/{hashed}", 7 * 86400, initial_event=True)
             engine.registry.bind_subscription(gsub, hashed, "district", district_id)
             db.add(subscription_record(subscription_id=gsub, hashed_id=hashed,
                                        kind="district", area_id=district_id))
@@ -201,9 +216,14 @@ def subscribe_device(db: Session, engine, phone: str, district_id: str | None) -
             # The free part: containment is reported straight away.
             if evt and evt.get("type") == "area-entered":
                 engine.registry.place(hashed, district_id, engine.now)
-        except ApiError as exc:
+        except Exception as exc:
+            # Broad for the same reason as above: the Nokia SDK raises its own
+            # exception types. The congestion subscription that already
+            # succeeded is committed and reported, rather than being lost
+            # because a later call failed.
             db.commit()
-            return {"subscriptions": made, "warning": f"geofence failed: {exc}"}
+            return {"subscriptions": made,
+                    "warning": f"geofence failed: {type(exc).__name__}: {exc}"}
 
     db.commit()
     return {"subscriptions": made}

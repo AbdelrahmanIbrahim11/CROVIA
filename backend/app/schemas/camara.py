@@ -28,13 +28,45 @@ class CongestionData(BaseModel):
 
 
 class CongestionNotification(BaseModel):
+    """
+    A congestion notification as the network really sends it.
+
+    Two things differ from the documented shape, both found by receiving a real
+    notification from Nokia rather than by reading:
+
+      `data` is a LIST of time intervals, not a single reading. Nokia sends the
+      last several windows in one message - four, five minutes apart, oldest
+      last. Declaring it as one object made pydantic reject the whole message.
+
+      `source` is the event TYPE, not a URL. It arrives as
+      "org.camaraproject.congestioninsights.v0.event", so there is no
+      subscription id in it and the notification does not say which device it
+      is about at all. That is why each device is given its own webhook
+      address, and the device is read from the path instead.
+    """
+
     id: str | None = None
     source: str = ""
     type: str = "event"
     specversion: str = "1.0"
     datacontenttype: str = "application/json"
     time: str | None = None
-    data: CongestionData
+    data: list[CongestionData] | CongestionData
+
+    @property
+    def latest(self) -> CongestionData:
+        """
+        The most recent reading.
+
+        Nokia orders the list newest first. Taking the newest rather than an
+        average matters: averaging four windows would smooth a sudden rise into
+        nothing, which is the exact signal the system exists to catch.
+        """
+        if isinstance(self.data, list):
+            if not self.data:
+                return CongestionData(congestionLevel="None", confidenceLevel=0)
+            return max(self.data, key=lambda d: d.timeIntervalStart or "")
+        return self.data
 
     @property
     def subscription_id(self) -> str:

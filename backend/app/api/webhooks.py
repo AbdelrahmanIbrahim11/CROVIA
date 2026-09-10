@@ -12,6 +12,7 @@ import hmac
 import logging
 
 from fastapi import APIRouter, Header, HTTPException, Request
+from pydantic import ValidationError
 
 from app.config import settings
 from app.runtime import get_engine
@@ -37,23 +38,76 @@ def _check_token(authorization: str | None) -> None:
         raise HTTPException(status_code=401, detail="bad token")
 
 
+@router.post("/webhooks/congestion/{device_key}")
 @router.post("/webhooks/congestion")
-async def congestion(notification: CongestionNotification,
+async def congestion(request: Request, device_key: str | None = None,
                      authorization: str | None = Header(default=None)):
+    """
+    A congestion notification from the network.
+
+    The body is read and validated by hand rather than declared as a typed
+    parameter. FastAPI would reject a mismatched payload with 422 before any of
+    our code ran, and the body would never be logged - so a notification whose
+    shape differs from the documentation would be dropped in silence, and a
+    system receiving nothing looks exactly like a calm city.
+
+    Nokia also sends lifecycle events on the same address, such as the
+    confirmation that a subscription has started. Those carry no congestion
+    level and are acknowledged rather than treated as an error.
+    """
     _check_token(authorization)
+    body = await request.json()
+
+    event_type = str(body.get("type", ""))
+    if "subscription-started" in event_type or "subscription-ends" in event_type:
+        logger.info("congestion subscription lifecycle event: %s", event_type)
+        return {"status": "ok", "note": "lifecycle event acknowledged"}
+
+    try:
+        notification = CongestionNotification.model_validate(body)
+    except ValidationError as exc:
+        # Logged in full, because this is the only way to learn what the
+        # network really sends when it differs from the documentation.
+        logger.warning("congestion notification did not match the expected shape: %s\n"
+                       "body was: %s", exc.errors()[:3], body)
+        return {"status": "ignored", "reason": "unrecognised payload"}
+
+    reading = notification.latest
     engine = get_engine()
-    engine.on_congestion(
-        notification.subscription_id,
-        notification.data.congestionLevel,
-        notification.data.confidenceLevel,
-    )
+
+    # Which device this is about comes from the ADDRESS, not the body.
+    #
+    # A real notification carries no device and no subscription id - `source`
+    # is the event type. Each device is therefore subscribed with its own
+    # webhook path, and that path is the only thing that identifies it.
+    if device_key:
+        engine.on_congestion_device(device_key, reading.congestionLevel,
+                                    reading.confidenceLevel)
+    else:
+        # An older subscription made before per-device addresses existed. It
+        # cannot be attributed, so it is counted and dropped rather than
+        # guessed at.
+        logger.warning("congestion notification with no device in the path - "
+                       "the subscription predates per-device webhooks and "
+                       "cannot be attributed")
     return {"status": "ok"}
 
 
+@router.post("/webhooks/geofencing/{device_key}")
 @router.post("/webhooks/geofencing")
-async def geofencing(notification: GeofencingNotification, request: Request,
+async def geofencing(request: Request, device_key: str | None = None,
                      authorization: str | None = Header(default=None)):
+    """Same reasoning as the congestion handler above."""
     _check_token(authorization)
+    body = await request.json()
+
+    try:
+        notification = GeofencingNotification.model_validate(body)
+    except ValidationError as exc:
+        logger.warning("geofence notification did not match the expected shape: %s\n"
+                       "body was: %s", exc.errors()[:3], body)
+        return {"status": "ignored", "reason": "unrecognised payload"}
+
     engine = get_engine()
     event = notification.event
     if event == "subscription-ends":

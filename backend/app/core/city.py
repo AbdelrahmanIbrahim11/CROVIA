@@ -191,6 +191,58 @@ class City:
         z = self.zones[zone_id]
         return (2.0 * z.radius_m) / float(self.constants["free_walk_speed_m_per_s"])
 
+    # ---- operator-drawn zones -------------------------------------------
+
+    def add_operator_zone(self, *, zone_id: str, label: str, district_id: str,
+                          lat: float, lon: float, radius_m: float,
+                          width_m: float, length_m: float,
+                          risk: float = 1.3) -> Zone:
+        """
+        Add a zone an operator drew, at runtime.
+
+        A drawn circle on its own cannot be judged. Everything the danger rule
+        does starts from the narrowest link - capacity is width x 72, and the
+        area people are packed into is width x length - so the operator has to
+        supply both. Those are two numbers a stadium or event manager already
+        knows about their own gate, and asking for them is what keeps a drawn
+        zone as trustworthy as one from the city plan.
+
+        The alternative, guessing a width, would produce a confident-looking
+        capacity figure with nothing behind it.
+        """
+        if zone_id in self.zones:
+            raise ValueError(f"zone {zone_id} already exists")
+        self.validate_radius(radius_m)
+        if width_m <= 0 or length_m <= 0:
+            raise ValueError("width and length must both be greater than zero")
+        if district_id not in self.districts:
+            raise ValueError(f"unknown district {district_id}")
+
+        self.zones[zone_id] = Zone(
+            id=zone_id, district_id=district_id, label=label, kind="operator",
+            center=LatLon(lat, lon), radius_m=float(radius_m),
+            notes="Drawn by an operator.",
+        )
+        # One segment: the link that will fail. Laid east-west through the
+        # centre so its geodesic length matches what the operator entered.
+        half = length_m / 2.0
+        m_lon = _M_PER_DEG_LON_EQ * math.cos(math.radians(lat))
+        self.segments[f"{zone_id}_link"] = Segment(
+            id=f"{zone_id}_link", zone_id=zone_id, label=f"{label} narrow point",
+            points=(LatLon(lat, lon - half / m_lon), LatLon(lat, lon + half / m_lon)),
+            width_m=float(width_m), risk=float(risk), drains_to=None,
+        )
+        return self.zones[zone_id]
+
+    def remove_operator_zone(self, zone_id: str) -> bool:
+        """Take a drawn zone out again. Zones from the city plan are untouchable."""
+        z = self.zones.get(zone_id)
+        if z is None or z.kind != "operator":
+            return False
+        self.zones.pop(zone_id, None)
+        self.segments.pop(f"{zone_id}_link", None)
+        return True
+
     def validate_radius(self, radius_m: float) -> None:
         """
         Refuse a circle the network cannot resolve.

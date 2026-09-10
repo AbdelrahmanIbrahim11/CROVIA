@@ -25,7 +25,7 @@ from app.core.city import city
 from app.db.redis import close_redis, get_redis
 from app.respones.responses import UserResponse
 from app.runtime import engine_now, get_engine, step_twin
-from app.services import enrollment, incidents, warnings
+from app.services import enrollment, incidents, operator_zones, warnings
 from app.usersDB import services as dbServices
 from app.usersDB.db import create_table, getdb
 from app.usersDB.dto import user_dto
@@ -92,6 +92,19 @@ async def lifespan(app: FastAPI):
             db.close()
     except Exception as exc:
         logger.warning("could not restore monitored devices: %s", exc)
+
+    # Put the operator's own zones back. Redrawing them after every restart
+    # would fall due during the event that made them worth drawing.
+    try:
+        db = next(getdb())
+        try:
+            n = operator_zones.load_all(db, city, engine)
+            if n:
+                logger.info("restored %d operator-drawn zones", n)
+        finally:
+            db.close()
+    except Exception as exc:
+        logger.warning("could not restore operator zones: %s", exc)
 
     # Write every alarm down. The engine calls these; it never holds a session
     # itself, so a database problem can slow the record but not the detection.

@@ -77,6 +77,56 @@ export async function stepAgent(): Promise<unknown | null> {
   }
 }
 
+export type OperatorZone = {
+  zone_id: string;
+  label: string;
+  district_id: string;
+  lat: number;
+  lon: number;
+  radius_m: number;
+  width_m: number;
+  length_m: number;
+  capacity_per_min?: number;
+  max_safe_people?: number;
+};
+
+/**
+ * Add a zone an operator drew.
+ *
+ * width_m and length_m are not optional. The danger rule starts from the
+ * narrowest link, so a circle without one cannot be judged, and the backend
+ * refuses anything under 600 m because below that the network cannot resolve
+ * the circle reliably. The error text comes back from the server and is worth
+ * showing verbatim: it explains the refusal.
+ */
+export async function createOperatorZone(
+  z: Omit<OperatorZone, 'zone_id' | 'capacity_per_min' | 'max_safe_people'> & {
+    created_by?: string;
+  },
+): Promise<{ ok: true; zone: OperatorZone } | { ok: false; error: string }> {
+  try {
+    const r = await fetch(`${API_BASE}/api/zones/operator`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(z),
+    });
+    const body = await r.json();
+    if (!r.ok) return { ok: false, error: body?.detail ?? 'Could not add the zone.' };
+    return { ok: true, zone: body as OperatorZone };
+  } catch {
+    return { ok: false, error: 'The CROVIA service is not reachable.' };
+  }
+}
+
+export async function deleteOperatorZone(zoneId: string): Promise<boolean> {
+  try {
+    const r = await fetch(`${API_BASE}/api/zones/operator/${zoneId}`, { method: 'DELETE' });
+    return r.ok;
+  } catch {
+    return false;
+  }
+}
+
 /** A zone's severity, mapped onto the map's 1-4 colour scale. */
 function levelFor(v: ZoneVerdict | null): Level {
   if (!v) return 1;

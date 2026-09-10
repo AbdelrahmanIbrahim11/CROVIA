@@ -185,3 +185,32 @@ class alert_delivery(base):
     # Set when a transport reported failure, so undelivered warnings are visible
     # rather than being assumed to have arrived.
     failed_reason = Column(String(200), nullable=True)
+
+
+class operator_zone(base):
+    """
+    A watch zone an operator drew, rather than one from the city plan.
+
+    Stored so it survives a restart. Without this an operator would redraw
+    their gates every time the service was restarted, and during an event that
+    is exactly when nobody has time to.
+
+    Width and length are required, not optional. The danger rule starts from
+    the narrowest link - capacity is width x 72, and the area people are packed
+    into is width x length - so a circle with no link cannot be judged at all.
+    """
+
+    __tablename__ = "operator_zones"
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    zone_id = Column(String(60), nullable=False, unique=True, index=True)
+    label = Column(String(120), nullable=False)
+    district_id = Column(String(60), nullable=False)
+    lat = Column(Float, nullable=False)
+    lon = Column(Float, nullable=False)
+    radius_m = Column(Float, nullable=False)
+    width_m = Column(Float, nullable=False)
+    length_m = Column(Float, nullable=False)
+    risk = Column(Float, nullable=False, default=1.3)
+    created_by = Column(String(80), nullable=True)
+    created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+    active = Column(Boolean, nullable=False, default=True)

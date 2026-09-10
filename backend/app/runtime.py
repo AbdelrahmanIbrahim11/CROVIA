@@ -159,12 +159,21 @@ def twin_truth() -> dict | None:
     if _twin is None:
         return None
     snap = _twin.history[-1] if _twin.history else None
-    return {
-        "t": _twin.t,
-        "zones": {z: {"true_people": _twin.people_in_zone(z),
-                      "true_density": round(snap["zones"][z]["worst_density"], 2) if snap else 0}
-                  for z in city.zones},
-    }
+    zones = {}
+    for z in city.zones:
+        # A zone an operator drew after the twin was built has no simulated
+        # truth to compare against. That is expected, not an error: the twin
+        # models the city plan, and the operator is watching something the plan
+        # does not contain. Reported as null so the demo view can say "no
+        # ground truth" instead of the whole endpoint failing.
+        if snap is None or z not in snap.get("zones", {}):
+            zones[z] = {"true_people": None, "true_density": None,
+                        "simulated": False}
+            continue
+        zones[z] = {"true_people": _twin.people_in_zone(z),
+                    "true_density": round(snap["zones"][z]["worst_density"], 2),
+                    "simulated": True}
+    return {"t": _twin.t, "zones": zones}
 
 
 def get_engine() -> Engine:

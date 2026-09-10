@@ -16,7 +16,7 @@ from app.core.city import city
 from app import runtime
 from app.runtime import get_engine
 from app.ai import graph as ai
-from app.services import enrollment, incidents, warnings
+from app.services import enrollment, incidents, operator_zones, warnings
 from app.usersDB.db import getdb
 
 router = APIRouter(prefix="/api", tags=["state"])
@@ -157,6 +157,58 @@ def warning_coverage(zone_id: str, db: Session = Depends(getdb)):
     at all. An operator needs the second number to read the first one honestly.
     """
     return warnings.coverage(db, zone_id, registry=get_engine().registry)
+
+
+class OperatorZoneIn(BaseModel):
+    """
+    A zone an operator drew on the map.
+
+    width_m and length_m are required rather than optional. The danger rule
+    starts from the narrowest link, so a circle without one cannot be judged,
+    and guessing a width would produce a capacity figure with nothing behind it.
+    """
+
+    label: str
+    district_id: str
+    lat: float
+    lon: float
+    radius_m: float
+    width_m: float
+    length_m: float
+    risk: float = 1.3
+    created_by: str | None = None
+
+
+@router.get("/zones/operator")
+def list_operator_zones(db: Session = Depends(getdb)):
+    return {"zones": operator_zones.listing(db)}
+
+
+@router.post("/zones/operator")
+def add_operator_zone(body: OperatorZoneIn, db: Session = Depends(getdb)):
+    """
+    Watch a place the city plan does not know about: a gate open only tonight,
+    a temporary barrier, the exit the away supporters are being sent to.
+
+    Judged by exactly the same rules as every other zone.
+    """
+    try:
+        return operator_zones.create(
+            db, city, get_engine(), label=body.label, district_id=body.district_id,
+            lat=body.lat, lon=body.lon, radius_m=body.radius_m,
+            width_m=body.width_m, length_m=body.length_m, risk=body.risk,
+            created_by=body.created_by)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc))
+
+
+@router.delete("/zones/operator/{zone_id}")
+def delete_operator_zone(zone_id: str, db: Session = Depends(getdb)):
+    if not operator_zones.remove(db, city, get_engine(), zone_id):
+        raise HTTPException(status_code=404,
+                            detail="no drawn zone with that id - zones from the "
+                                   "city plan cannot be deleted")
+    return {"status": "removed"}
 
 
 @router.post("/consent")

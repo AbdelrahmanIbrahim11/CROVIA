@@ -51,9 +51,13 @@ class normal_userCreate(normal_userBase):
     pass
 
 
-class admin_userCreate(normal_userBase):
+# These two used to extend normal_userBase, which carries a phone number. The
+# admin and authority tables have no number column, so creating either account
+# raised "'number' is an invalid keyword argument" and no operator or authority
+# account could ever be made. They extend their own base now.
+class admin_userCreate(admin_userBase):
     pass
 
 
-class authority_userCreate(normal_userBase):
+class authority_userCreate(authority_userBase):
     pass

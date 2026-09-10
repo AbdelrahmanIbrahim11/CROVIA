@@ -82,9 +82,10 @@ def register(body: RegisterIn, db: Session = Depends(getdb)):
         raise HTTPException(status_code=400, detail="that email is already registered")
 
     fields = {"username": body.username, "password": body.password, "email": body.email}
-    # Operator and authority accounts have no phone column of their own, but the
-    # shared create schema still asks for the field, so it is filled and unused.
-    fields["number"] = body.number or ""
+    # Only a citizen record has a phone number. Operators and authorities are
+    # not monitored, so their tables have no such column.
+    if body.user_type == "normal":
+        fields["number"] = body.number
 
     user = dbServices.create_user(db=db, userdata=fields, user_role=body.user_type)
     if not user:
@@ -104,7 +105,7 @@ def login(body: LoginIn, db: Session = Depends(getdb)):
     user = dbServices.verify_user(
         db=db,
         userdata={"username": "", "password": body.password, "email": body.email,
-                  "number": ""},
+                  **({"number": ""} if body.user_type == "normal" else {})},
         user_role=body.user_type,
     )
     if not user:

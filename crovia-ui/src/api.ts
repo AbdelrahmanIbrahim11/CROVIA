@@ -14,6 +14,7 @@ import {
   ZoneOverlay,
   CrowdCluster,
 } from './components/CityMap.types';
+import { bottleneckOf, segmentPath, zoneById } from './geo';
 
 const DEFAULT_BASE = 'http://localhost:8000';
 
@@ -97,12 +98,14 @@ export function toOverlays(state: LiveState): {
     armed: !!v && (v.dangerous || v.severity >= 0.2),
   }));
 
+  // A district shows the colour of its worst zone. The mapping comes from the
+  // geography file rather than from guessing at the zone id: reading the
+  // district out of the name broke silently the moment a zone was renamed, and
+  // it is already recorded properly one lookup away.
   const worstByDistrict: Record<string, Level> = {};
   for (const [id, v] of Object.entries(state.zones)) {
-    const d = id.startsWith('zone_stadium') ? 'district_stadium'
-      : id.includes('foxhills') ? 'district_foxhills'
-      : id.includes('central') ? 'district_central'
-      : 'district_marina';
+    const d = zoneById[id]?.district_id;
+    if (!d) continue;
     const lvl = levelFor(v);
     worstByDistrict[d] = Math.max(worstByDistrict[d] ?? 1, lvl) as Level;
   }
@@ -112,21 +115,42 @@ export function toOverlays(state: LiveState): {
     armed: s === 'ALERT' || s === 'WATCHING' || s === 'CONFIRMING',
   }));
 
-  // Only alarming zones get a cluster marker. The halo is the honest
-  // uncertainty, not a decorative ring.
-  const clusters: CrowdCluster[] = state.alerts.slice(-3).map((a, i) => ({
-    id: `alert_${i}_${a.zone_id}`,
-    lat: 0,
-    lon: 0,
-    accuracy_m: 420,
-    spread_m: 180,
-    level: 4 as Level,
-    label: a.segment_label,
-    sampleCount: 0,
-    estimate: `${Math.round(a.people_low).toLocaleString()}–${Math.round(
-      a.people_high,
-    ).toLocaleString()} people`,
-  }));
+  // Only alarming zones get a cluster marker, and it is drawn on the hazard
+  // itself rather than on the middle of the zone. A 600 m circle is wide enough
+  // that its centre can sit a few hundred metres from the ramp that is actually
+  // failing, and an operator sent to the wrong end of a concourse has been sent
+  // to the wrong place.
+  //
+  // These previously carried latitude and longitude of zero, which put every
+  // alarm in the Atlantic instead of on Lusail.
+  const clusters: CrowdCluster[] = state.alerts
+    .slice(-3)
+    .map((a, i): CrowdCluster | null => {
+      const zone = zoneById[a.zone_id];
+      if (!zone) return null;
+      const hazard = bottleneckOf(a.zone_id);
+      const path = hazard ? segmentPath(a.zone_id, hazard) : [];
+      // Midpoint of the narrow link, falling back to the zone centre.
+      const at = path.length ? path[Math.floor(path.length / 2)] : zone.center;
+      return {
+        id: `alert_${i}_${a.zone_id}`,
+        lat: at.lat,
+        lon: at.lon,
+        // The halo is the honest uncertainty, not a decorative ring. Network
+        // positioning resolves to a few hundred metres, so a crisp dot would
+        // claim a precision the network cannot deliver.
+        accuracy_m: 420,
+        // How far the crowd itself reaches: the length of the failing link.
+        spread_m: hazard ? Math.max(120, hazard.width_m * 20) : 180,
+        level: 4 as Level,
+        label: a.segment_label,
+        sampleCount: 0,
+        estimate: `${Math.round(a.people_low).toLocaleString()}–${Math.round(
+          a.people_high,
+        ).toLocaleString()} people`,
+      };
+    })
+    .filter((c): c is CrowdCluster => c !== null);
 
   return { districts, zones, clusters };
 }

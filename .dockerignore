@@ -1,0 +1,29 @@
+# The build context is the repository root, so most of it must be excluded.
+# Without this the image would carry the virtualenv, node_modules and the local
+# database - hundreds of megabytes, and a copy of local data in a public image.
+
+**/venv/
+**/.venv/
+**/node_modules/
+**/__pycache__/
+**/*.pyc
+
+# Local database. The deployment uses Postgres.
+**/*.db
+
+# Secrets. These must arrive as environment variables, never baked into a layer.
+**/.env
+!**/.env.example
+
+# The app is built and served separately; only its geography file is needed,
+# and the Dockerfile copies that one path explicitly.
+crovia-ui/
+!crovia-ui/src/geo/
+
+.git/
+.github/
+**/.expo/
+**/dist/
+**/.DS_Store
+Langgraph_structure/
+Docs/

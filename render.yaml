@@ -1,0 +1,48 @@
+# One-click deployment on Render.
+#
+# Render reads this file, creates the database, creates the service, and wires
+# DATABASE_URL between them. The two values marked sync:false are the ones only
+# you can supply - Render prompts for them during setup.
+#
+# Deploy with: New > Blueprint, and point it at this repository.
+services:
+  - type: web
+    name: crovia-api
+    runtime: docker
+    dockerfilePath: ./backend/Dockerfile
+    # The build context is the repository root, because the backend reads the
+    # geography file that lives under crovia-ui/.
+    dockerContext: .
+    plan: free
+    healthCheckPath: /health
+    envVars:
+      - key: CROVIA_ENV
+        value: production
+      # Generated once by Render and kept. Everyone is signed out if it changes.
+      - key: JWT_SECRET
+        generateValue: true
+      - key: DATABASE_URL
+        fromDatabase:
+          name: crovia-db
+          property: connectionString
+      # Where the app is served from. Anything not listed here is refused, so a
+      # stranger's website cannot call this API using a visitor's browser.
+      - key: CORS_ORIGINS
+        sync: false
+      # The address Nokia sends congestion and geofence notifications to. It has
+      # to be this service's own public URL.
+      - key: WEBHOOK_BASE_URL
+        sync: false
+      - key: WEBHOOK_AUTH_TOKEN
+        generateValue: true
+      # Optional. Without them the system still runs: the twin replaces Nokia,
+      # and deterministic rules replace the model.
+      - key: NOKIA_NAC_API_KEY
+        sync: false
+      - key: GROQ_API_KEY
+        sync: false
+
+databases:
+  - name: crovia-db
+    plan: free
+    databaseName: crovia

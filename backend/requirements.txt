@@ -14,3 +14,13 @@ redis                  # used by app/db/redis.py
 psycopg2-binary        # PostgreSQL driver. Swap this if you choose another database.
 uvicorn                # the server that runs FastAPI
 PyJWT
+
+# --- added when the AI layer and the simulated city were wired in ---
+# Both are imported lazily, so the backend still starts without them - it falls
+# back to deterministic rules and refuses twin mode. Listing them means a
+# deployment that sets GROQ_API_KEY or CROVIA_TWIN actually works rather than
+# silently doing less than expected.
+numpy                  # the simulated city in sim/twin.py
+langchain-groq         # the agent in app/ai/graph.py
+langchain-core         # message types the agent uses
+

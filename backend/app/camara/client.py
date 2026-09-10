@@ -165,6 +165,9 @@ class NokiaClient:
 
         self.host = host or os.getenv("NOKIA_NAC_HOST",
                                       "network-as-code.nokia.rapidapi.com")
+        # The secret Nokia hands back on every notification, so the webhook can
+        # tell a real notification from anyone who found the address.
+        self.webhook_token = os.getenv("WEBHOOK_AUTH_TOKEN", "").strip()
         self._nac = nac.NetworkAsCodeApi(rapidapi_host=self.host, api_key=api_key)
         self.ledger = ledger or Ledger()
 
@@ -215,10 +218,23 @@ class NokiaClient:
                 "radius_m": float(getattr(area, "radius", None) or 400)}
 
     def create_congestion_subscription(self, phone: str, sink: str, expire_s: int) -> str:
+        """
+        Start receiving congestion notifications for one device.
+
+        notification_auth_token is what Nokia sends back to us in the
+        Authorization header of every notification. Without it Nokia posts with
+        no credentials at all, our webhook answers 401, and every notification
+        is silently thrown away - which looks exactly like a calm city.
+
+        This was found by watching a real notification arrive from Nokia and be
+        rejected. No amount of local testing would have shown it, because the
+        twin calls the handler directly rather than over HTTP.
+        """
         self.ledger.record(TIER_CONGESTION_SUB)
         sub = self._nac.congestion_insights.create_subscription(
             device={"phone_number": phone},
-            webhook={"notification_url": sink},
+            webhook={"notification_url": sink,
+                     "notification_auth_token": self.webhook_token},
             subscription_expire_time=dt.datetime.now(dt.timezone.utc)
             + dt.timedelta(seconds=expire_s),
         )
@@ -228,8 +244,18 @@ class NokiaClient:
                                      sink: str, expire_s: int,
                                      initial_event: bool = True) -> tuple[str, dict | None]:
         self.ledger.record(TIER_GEOFENCE_SUB)
+        expires = dt.datetime.now(dt.timezone.utc) + dt.timedelta(seconds=expire_s)
         sub = self._nac.geofencing.create_subscription(
             protocol="HTTP", sink=sink,
+            # Geofencing carries the token in sink_credential rather than in the
+            # webhook block. Same purpose: it is handed back to us on every
+            # notification so the endpoint can tell Nokia from a stranger.
+            sink_credential={
+                "credential_type": "ACCESSTOKEN",
+                "access_token": self.webhook_token,
+                "access_token_type": "bearer",
+                "access_token_expires_utc": expires.isoformat(),
+            },
             types=["org.camaraproject.geofencing-subscriptions.v0.area-entered"],
             config={
                 "subscription_detail": {
@@ -238,8 +264,7 @@ class NokiaClient:
                              "center": {"latitude": area.lat, "longitude": area.lon},
                              "radius": int(area.radius_m)},
                 },
-                "subscription_expire_time": dt.datetime.now(dt.timezone.utc)
-                + dt.timedelta(seconds=expire_s),
+                "subscription_expire_time": expires,
                 "initial_event": initial_event,
             },
         )

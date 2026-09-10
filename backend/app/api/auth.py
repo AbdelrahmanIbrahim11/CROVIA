@@ -23,7 +23,9 @@ than implied, and it is why tokens expire in hours rather than months.
 
 from __future__ import annotations
 
+import hmac
 import logging
+import os
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from pydantic import BaseModel, EmailStr
@@ -51,6 +53,8 @@ class RegisterIn(BaseModel):
     # ever monitored. An operator watches the city; they are not watched.
     number: str | None = None
     user_type: str = "normal"
+    # Required to create anything other than a citizen account. See below.
+    invite_code: str | None = None
     # Whether the person agreed to be monitored, asked at the moment they sign
     # up rather than buried in settings afterwards. Defaults to False: silence
     # is not agreement, and an account created without an explicit yes is an
@@ -76,9 +80,35 @@ class TokenOut(BaseModel):
 
 @router.post("/register", status_code=status.HTTP_201_CREATED)
 def register(body: RegisterIn, db: Session = Depends(getdb)):
+    """
+    Create an account.
+
+    Anyone may create a CITIZEN account - that is the point of the product.
+
+    An operator or authority account needs STAFF_INVITE_CODE, because those
+    accounts can see the whole city, every alarm and every incident. Until this
+    check existed, a stranger who found the address could simply ask for
+    user_type "admin" and be given one, which was tested and confirmed. Nothing
+    stopped them: the role came from the request body and was believed.
+
+    The code lives in the environment rather than in a database table so that
+    the very first operator account can be made at all - a rule that only
+    existing staff may create staff has no way to start.
+    """
     if body.user_type not in ROLES:
         raise HTTPException(status_code=422,
                             detail=f"user_type must be one of {', '.join(ROLES)}")
+
+    if body.user_type != "normal":
+        expected = os.getenv("STAFF_INVITE_CODE", "").strip()
+        if not expected:
+            raise HTTPException(
+                status_code=403,
+                detail="operator and authority accounts are not open for sign-up")
+        if not body.invite_code or not hmac.compare_digest(body.invite_code, expected):
+            # Constant time, so the code cannot be worked out one character at a
+            # time by measuring how long the answer takes.
+            raise HTTPException(status_code=403, detail="invalid invite code")
     if len(body.password) < 8:
         raise HTTPException(status_code=422,
                             detail="password must be at least 8 characters")

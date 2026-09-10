@@ -25,7 +25,7 @@ from app.core.city import city
 from app.db.redis import close_redis, get_redis
 from app.respones.responses import UserResponse
 from app.runtime import engine_now, get_engine, step_twin
-from app.services import enrollment, incidents
+from app.services import enrollment, incidents, warnings
 from app.usersDB import services as dbServices
 from app.usersDB.db import create_table, getdb
 from app.usersDB.dto import user_dto
@@ -98,7 +98,16 @@ async def lifespan(app: FastAPI):
     def _record_alarm(record: dict) -> None:
         db = next(getdb())
         try:
-            incidents.open_incident(db, record)
+            row = incidents.open_incident(db, record)
+            # Recording the alarm and telling people about it are one action.
+            # Splitting them is how a system ends up with a complete incident
+            # log and nobody warned.
+            result = warnings.warn_people_near(db, engine.registry, record,
+                                               incident_id=row.id)
+            engine.log("warned",
+                       f"{result['sent']} people in {result.get('district_id', '?')} "
+                       f"were warned about {record.get('segment_label')}",
+                       zone=record.get("zone_id"), **result)
         finally:
             db.close()
 

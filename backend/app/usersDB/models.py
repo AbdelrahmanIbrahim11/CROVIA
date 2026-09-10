@@ -156,3 +156,32 @@ class incident(base):
     pinch_density = Column(Float, nullable=True)
     fired_by = Column(String(40), nullable=True)
     reason = Column(Text, nullable=True)
+
+
+class alert_delivery(base):
+    """
+    One warning sent to one person, and whether they have seen it.
+
+    A row per recipient rather than a row per alarm, because the questions that
+    matter afterwards are per person: was this individual warned, when, and did
+    the warning reach them. An incident row cannot answer that.
+
+    The recipient is stored by hash. A warning history that holds phone numbers
+    would undo the vault, which is the one place a number is allowed to exist.
+    """
+
+    __tablename__ = "alert_deliveries"
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    hashed_id = Column(String(32), nullable=False, index=True)
+    zone_id = Column(String(60), nullable=False, index=True)
+    incident_id = Column(UUID(as_uuid=True), ForeignKey("incidents.id"), nullable=True)
+    # How it went out. "in_app" is the only channel wired up; the column exists
+    # so adding SMS or push later does not need a migration of live rows.
+    channel = Column(String(20), nullable=False, default="in_app")
+    title = Column(String(160), nullable=False)
+    body = Column(Text, nullable=False)
+    sent_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+    read_at = Column(DateTime(timezone=True), nullable=True)
+    # Set when a transport reported failure, so undelivered warnings are visible
+    # rather than being assumed to have arrived.
+    failed_reason = Column(String(200), nullable=True)

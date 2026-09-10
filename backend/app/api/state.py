@@ -16,7 +16,7 @@ from app.core.city import city
 from app import runtime
 from app.runtime import get_engine
 from app.ai import graph as ai
-from app.services import enrollment, incidents
+from app.services import enrollment, incidents, warnings
 from app.usersDB.db import getdb
 
 router = APIRouter(prefix="/api", tags=["state"])
@@ -130,6 +130,33 @@ def get_incidents(limit: int = 50, db: Session = Depends(getdb)):
     possible later.
     """
     return {"incidents": incidents.history(db, limit=limit)}
+
+
+@router.get("/warnings/{hashed_id}")
+def get_warnings(hashed_id: str, db: Session = Depends(getdb)):
+    """
+    The warnings sent to one person.
+
+    Addressed by hash, never by phone number - the number exists in exactly one
+    place and this is not it.
+    """
+    return {"warnings": warnings.inbox(db, hashed_id)}
+
+
+@router.post("/warnings/{delivery_id}/read")
+def read_warning(delivery_id: str, db: Session = Depends(getdb)):
+    if not warnings.mark_read(db, delivery_id):
+        raise HTTPException(status_code=404, detail="no such warning")
+    return {"status": "read"}
+
+
+@router.get("/warnings/coverage/{zone_id}")
+def warning_coverage(zone_id: str, db: Session = Depends(getdb)):
+    """
+    How many people were reached about this zone, against how many are monitored
+    at all. An operator needs the second number to read the first one honestly.
+    """
+    return warnings.coverage(db, zone_id, registry=get_engine().registry)
 
 
 @router.post("/consent")

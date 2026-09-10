@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { SafeAreaView, StatusBar, View } from 'react-native';
 import { GluestackUIProvider } from '@gluestack-ui/themed';
 import { config } from '@gluestack-ui/config';
@@ -8,30 +8,78 @@ import { AdminDashboardScreen } from './src/screens/AdminDashboardScreen';
 import { NotificationsScreen } from './src/screens/NotificationsScreen';
 import { PoliceDashboardScreen } from './src/screens/PoliceDashboardScreen';
 import { ProfileScreen } from './src/screens/ProfileScreen';
-import { Role, SignInScreen } from './src/screens/SignInScreen';
+import { SignInScreen } from './src/screens/SignInScreen';
 import { SignUpScreen } from './src/screens/SignUpScreen';
 import { UserDashboardScreen } from './src/screens/UserDashboardScreen';
 import { ThemeProvider } from './src/theme/ThemeProvider';
+import {
+  Session,
+  clearSession,
+  loadSession,
+  signOut as apiSignOut,
+  stillValid,
+} from './src/session';
 
 type Route = 'signin' | 'signup' | 'citizen' | 'admin' | 'police';
 
+/** Which screen an account type lands on. The backend decides the role, not the app. */
+const HOME: Record<Session['role'], Route> = {
+  normal: 'citizen',
+  admin: 'admin',
+  authority: 'police',
+};
+
 function Shell() {
-  const [route, setRoute] = useState<Route>('signin');
+  // Start from whatever is stored, so a reload does not sign the person out.
+  const [session, setSession] = useState<Session | null>(() => loadSession());
+  const [route, setRoute] = useState<Route>(() => {
+    const s = loadSession();
+    return s ? HOME[s.role] : 'signin';
+  });
   const [tab, setTab] = useState<TabKey>('map');
+
+  // A stored token can be expired or signed with a key the server no longer
+  // has. Checking once at start means the person is sent to the sign-in screen
+  // instead of staring at a dashboard where nothing loads.
+  useEffect(() => {
+    if (!session) return;
+    let cancelled = false;
+    stillValid().then((ok) => {
+      if (!ok && !cancelled) {
+        clearSession();
+        setSession(null);
+        setRoute('signin');
+      }
+    });
+    return () => {
+      cancelled = true;
+    };
+    // Runs once per signed-in session, not on every render.
+  }, [session?.token]);
 
   const unread = notifications.filter((n) => n.unread).length;
 
-  const signIn = (role: Role) => {
+  const handleSignIn = (s: Session) => {
+    setSession(s);
     setTab('map');
-    setRoute(role === 'citizen' ? 'citizen' : role === 'admin' ? 'admin' : 'police');
+    setRoute(HOME[s.role]);
+  };
+
+  const handleSignOut = async () => {
+    await apiSignOut();
+    setSession(null);
+    setRoute('signin');
   };
 
   let body: React.ReactNode = null;
 
-  if (route === 'signin') {
-    body = <SignInScreen onSignIn={signIn} onSignUp={() => setRoute('signup')} />;
-  } else if (route === 'signup') {
-    body = <SignUpScreen onCreate={() => setRoute('citizen')} onBack={() => setRoute('signin')} />;
+  // Sign-up is checked first. Nobody has a session while creating an account,
+  // so testing for "no session" before this sent them straight back to sign-in
+  // and the sign-up screen could never open.
+  if (route === 'signup') {
+    body = <SignUpScreen onCreate={() => setRoute('signin')} onBack={() => setRoute('signin')} />;
+  } else if (route === 'signin' || !session) {
+    body = <SignInScreen onSignIn={handleSignIn} onSignUp={() => setRoute('signup')} />;
   } else {
     // All authenticated routes now have the Tab Bar!
     let activeScreen: React.ReactNode = null;
@@ -39,19 +87,19 @@ function Shell() {
     if (tab === 'alerts') {
       activeScreen = <NotificationsScreen />;
     } else if (tab === 'profile') {
-      activeScreen = <ProfileScreen onSignOut={() => setRoute('signin')} />;
+      activeScreen = <ProfileScreen onSignOut={handleSignOut} />;
     } else {
       // tab is 'map'
       if (route === 'admin') {
-        activeScreen = <AdminDashboardScreen onSignOut={() => setRoute('signin')} />;
+        activeScreen = <AdminDashboardScreen onSignOut={handleSignOut} />;
       } else if (route === 'police') {
-        activeScreen = <PoliceDashboardScreen onSignOut={() => setRoute('signin')} />;
+        activeScreen = <PoliceDashboardScreen onSignOut={handleSignOut} />;
       } else {
         activeScreen = (
           <UserDashboardScreen
             unread={unread}
             onOpenAlerts={() => setTab('alerts')}
-            onSignOut={() => setRoute('signin')}
+            onSignOut={handleSignOut}
           />
         );
       }

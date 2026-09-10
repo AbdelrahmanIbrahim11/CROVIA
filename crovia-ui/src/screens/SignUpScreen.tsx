@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { KeyboardAvoidingView, Platform, Image as RNImage } from 'react-native';
 import {
   Box,
@@ -13,6 +13,7 @@ import {
 } from '@gluestack-ui/themed';
 import { MotionButton } from '../components/MotionButton';
 import { DropInText, TypewriterText } from '../components/AnimatedText';
+import { register } from '../session';
 
 export function SignUpScreen({
   onCreate,
@@ -21,6 +22,38 @@ export function SignUpScreen({
   onCreate: () => void;
   onBack: () => void;
 }) {
+  const [name, setName] = useState('');
+  const [email, setEmail] = useState('');
+  const [number, setNumber] = useState('');
+  const [password, setPassword] = useState('');
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  async function submit() {
+    setError(null);
+    if (!name.trim() || !email.trim() || !number.trim() || !password) {
+      setError('Please fill in every field.');
+      return;
+    }
+    if (password.length < 8) {
+      setError('Your password needs at least 8 characters.');
+      return;
+    }
+    setBusy(true);
+    const res = await register({
+      username: name.trim(),
+      email: email.trim(),
+      number: number.replace(/\s+/g, ''),
+      password,
+      userType: 'normal',
+    });
+    setBusy(false);
+    if (!res.ok) {
+      setError(res.error);
+      return;
+    }
+    onCreate();
+  }
   const bgColor = '#161A28';
   const accentColor = '#F2A93B';
   const cardBg = '#1E2336';
@@ -62,41 +95,55 @@ export function SignUpScreen({
               </VStack>
 
               <VStack space="xl">
-                <HStack space="md">
-                  <VStack space="xs" flex={1}>
-                    <Text size="sm" fontWeight="$medium" color={textPrimary}>First name</Text>
-                    <Input variant="outline" size="xl" borderRadius="$lg" borderColor="#333A54" $focus-borderColor={accentColor}>
-                      <GluestackInputField placeholder="Nour" color={textPrimary} placeholderTextColor="#6B7280" />
-                    </Input>
-                  </VStack>
-                  <VStack space="xs" flex={1}>
-                    <Text size="sm" fontWeight="$medium" color={textPrimary}>Last name</Text>
-                    <Input variant="outline" size="xl" borderRadius="$lg" borderColor="#333A54" $focus-borderColor={accentColor}>
-                      <GluestackInputField placeholder="Mahmoud" color={textPrimary} placeholderTextColor="#6B7280" />
-                    </Input>
-                  </VStack>
-                </HStack>
+                <VStack space="xs">
+                  <Text size="sm" fontWeight="$medium" color={textPrimary}>Your name</Text>
+                  <Input variant="outline" size="xl" borderRadius="$lg" borderColor="#333A54" $focus-borderColor={accentColor}>
+                    <GluestackInputField value={name} onChangeText={setName} placeholder="Nour Mahmoud"
+                      color={textPrimary} placeholderTextColor="#6B7280" />
+                  </Input>
+                </VStack>
+
+                <VStack space="xs">
+                  <Text size="sm" fontWeight="$medium" color={textPrimary}>Email</Text>
+                  <Input variant="outline" size="xl" borderRadius="$lg" borderColor="#333A54" $focus-borderColor={accentColor}>
+                    <GluestackInputField value={email} onChangeText={setEmail} placeholder="you@example.com"
+                      keyboardType="email-address" autoCapitalize="none"
+                      color={textPrimary} placeholderTextColor="#6B7280" />
+                  </Input>
+                </VStack>
 
                 <VStack space="xs">
                   <Text size="sm" fontWeight="$medium" color={textPrimary}>Phone number</Text>
                   <Input variant="outline" size="xl" borderRadius="$lg" borderColor="#333A54" $focus-borderColor={accentColor}>
-                    <GluestackInputField placeholder="+20 100 000 0000" keyboardType="phone-pad" color={textPrimary} placeholderTextColor="#6B7280" />
+                    <GluestackInputField value={number} onChangeText={setNumber} placeholder="+974 3000 0000"
+                      keyboardType="phone-pad" color={textPrimary} placeholderTextColor="#6B7280" />
                   </Input>
+                  <Text size="xs" color={textMuted}>
+                    This is the number CROVIA warns. It is stored as a one-way code, never as a number.
+                  </Text>
                 </VStack>
 
                 <VStack space="xs">
                   <Text size="sm" fontWeight="$medium" color={textPrimary}>Password</Text>
                   <Input variant="outline" size="xl" borderRadius="$lg" borderColor="#333A54" $focus-borderColor={accentColor}>
-                    <GluestackInputField placeholder="••••••••" secureTextEntry color={textPrimary} placeholderTextColor="#6B7280" />
+                    <GluestackInputField value={password} onChangeText={setPassword} placeholder="At least 8 characters"
+                      secureTextEntry onSubmitEditing={submit}
+                      color={textPrimary} placeholderTextColor="#6B7280" />
                   </Input>
                 </VStack>
 
-                <MotionButton 
-                  label="Create account"
+                {error ? (
+                  <Box bg="rgba(255, 68, 68, 0.12)" borderWidth={1} borderColor="#ff4444" borderRadius="$lg" p="$3">
+                    <Text size="sm" color="#ff4444">{error}</Text>
+                  </Box>
+                ) : null}
+
+                <MotionButton
+                  label={busy ? 'Creating…' : 'Create account'}
                   color={accentColor}
                   textColor="#161A28"
                   mt="$2"
-                  onPress={onCreate}
+                  onPress={submit}
                 />
               </VStack>
 

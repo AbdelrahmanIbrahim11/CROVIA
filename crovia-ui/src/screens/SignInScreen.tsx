@@ -14,6 +14,7 @@ import {
 import { MotionButton } from '../components/MotionButton';
 import { DropInText, TypewriterText } from '../components/AnimatedText';
 import { AnimatedSegmentedControl } from '../components/AnimatedSegmentedControl';
+import { Role as AccountRole, Session, signIn as apiSignIn } from '../session';
 
 if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
   UIManager.setLayoutAnimationEnabledExperimental(true);
@@ -27,15 +28,43 @@ const roles: { key: Role; label: string; blurb: string }[] = [
   { key: 'police', label: 'Authority', blurb: 'Authority accounts are issued by operations. Contact them if you cannot sign in.' },
 ];
 
+/** The tab a person picked, translated into the account type the backend knows. */
+const ACCOUNT_ROLE: Record<Role, AccountRole> = {
+  citizen: 'normal',
+  admin: 'admin',
+  police: 'authority',
+};
+
 export function SignInScreen({
   onSignIn,
   onSignUp,
 }: {
-  onSignIn: (role: Role) => void;
+  onSignIn: (session: Session) => void;
   onSignUp: () => void;
 }) {
   const [role, setRole] = useState<Role>('citizen');
   const active = roles.find((r) => r.key === role)!;
+
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  async function submit() {
+    setError(null);
+    if (!email.trim() || !password) {
+      setError('Enter your email and password.');
+      return;
+    }
+    setBusy(true);
+    const res = await apiSignIn(email.trim(), password, ACCOUNT_ROLE[role]);
+    setBusy(false);
+    if (!res.ok) {
+      setError(res.error);
+      return;
+    }
+    onSignIn(res.session);
+  }
 
   const handleRoleChange = (newRole: Role) => {
     LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
@@ -95,28 +124,43 @@ export function SignInScreen({
               />
 
               <VStack space="xl">
-                {role === 'citizen' ? (
-                  <VStack space="xs">
-                    <Text size="sm" fontWeight="$medium" color={textPrimary}>Phone or email</Text>
-                    <Input variant="outline" size="xl" borderRadius="$lg" borderColor="#333A54" $focus-borderColor={accentColor}>
-                      <GluestackInputField placeholder="+20 100 000 0000" autoCapitalize="none" color={textPrimary} placeholderTextColor="#6B7280" />
-                    </Input>
-                  </VStack>
-                ) : (
-                  <VStack space="xs">
-                    <Text size="sm" fontWeight="$medium" color={textPrimary}>Work email</Text>
-                    <Input variant="outline" size="xl" borderRadius="$lg" borderColor="#333A54" $focus-borderColor={accentColor}>
-                      <GluestackInputField placeholder="name@gov.eg" keyboardType="email-address" autoCapitalize="none" color={textPrimary} placeholderTextColor="#6B7280" />
-                    </Input>
-                  </VStack>
-                )}
+                <VStack space="xs">
+                  <Text size="sm" fontWeight="$medium" color={textPrimary}>
+                    {role === 'citizen' ? 'Email' : 'Work email'}
+                  </Text>
+                  <Input variant="outline" size="xl" borderRadius="$lg" borderColor="#333A54" $focus-borderColor={accentColor}>
+                    <GluestackInputField
+                      value={email}
+                      onChangeText={setEmail}
+                      placeholder={role === 'citizen' ? 'you@example.com' : 'name@lusail.qa'}
+                      keyboardType="email-address"
+                      autoCapitalize="none"
+                      color={textPrimary}
+                      placeholderTextColor="#6B7280"
+                    />
+                  </Input>
+                </VStack>
 
                 <VStack space="xs">
                   <Text size="sm" fontWeight="$medium" color={textPrimary}>Password</Text>
                   <Input variant="outline" size="xl" borderRadius="$lg" borderColor="#333A54" $focus-borderColor={accentColor}>
-                    <GluestackInputField placeholder="••••••••" secureTextEntry color={textPrimary} placeholderTextColor="#6B7280" />
+                    <GluestackInputField
+                      value={password}
+                      onChangeText={setPassword}
+                      placeholder="••••••••"
+                      secureTextEntry
+                      onSubmitEditing={submit}
+                      color={textPrimary}
+                      placeholderTextColor="#6B7280"
+                    />
                   </Input>
                 </VStack>
+
+                {error ? (
+                  <Box bg="rgba(255, 68, 68, 0.12)" borderWidth={1} borderColor="#ff4444" borderRadius="$lg" p="$3">
+                    <Text size="sm" color="#ff4444">{error}</Text>
+                  </Box>
+                ) : null}
 
                 <Pressable alignSelf="flex-end">
                   <Text size="sm" color={accentColor} fontWeight="$bold">
@@ -124,12 +168,12 @@ export function SignInScreen({
                   </Text>
                 </Pressable>
 
-                <MotionButton 
-                  label="Sign in"
+                <MotionButton
+                  label={busy ? 'Signing in…' : 'Sign in'}
                   color={accentColor}
                   textColor="#161A28"
                   mt="$2"
-                  onPress={() => onSignIn(role)}
+                  onPress={submit}
                 />
               </VStack>
 

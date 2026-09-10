@@ -15,6 +15,7 @@ import {
   CrowdCluster,
 } from './components/CityMap.types';
 import { bottleneckOf, segmentPath, zoneById } from './geo';
+import { authHeader } from './session';
 
 const DEFAULT_BASE = 'http://localhost:8000';
 
@@ -60,7 +61,10 @@ export type LiveState = {
 
 export async function fetchLiveState(signal?: AbortSignal): Promise<LiveState | null> {
   try {
-    const r = await fetch(`${API_BASE}/api/state`, { signal });
+    // The live picture is operations data and now needs a token. Without one
+    // the backend answers 401 and the app falls back to demo data, exactly as
+    // it does when the backend is not running at all.
+    const r = await fetch(`${API_BASE}/api/state`, { signal, headers: authHeader() });
     if (!r.ok) return null;
     return (await r.json()) as LiveState;
   } catch {
@@ -70,10 +74,89 @@ export async function fetchLiveState(signal?: AbortSignal): Promise<LiveState | 
 
 export async function stepAgent(): Promise<unknown | null> {
   try {
-    const r = await fetch(`${API_BASE}/api/agent/step`, { method: 'POST' });
+    const r = await fetch(`${API_BASE}/api/agent/step`, {
+      method: 'POST',
+      headers: authHeader(),
+    });
     return r.ok ? await r.json() : null;
   } catch {
     return null;
+  }
+}
+
+export type Incident = {
+  id: string;
+  zone_id: string;
+  segment_id: string | null;
+  started_at: string | null;
+  ended_at: string | null;
+  duration_s: number | null;
+  open: boolean;
+  acknowledged: boolean;
+  acknowledged_by: string | null;
+  closed_by: string | null;
+  action_taken: string | null;
+  people_low: number | null;
+  people_high: number | null;
+  fired_by: string | null;
+  reason: string | null;
+};
+
+export async function fetchIncidents(): Promise<Incident[]> {
+  try {
+    const r = await fetch(`${API_BASE}/api/incidents`, { headers: authHeader() });
+    if (!r.ok) return [];
+    return ((await r.json()).incidents ?? []) as Incident[];
+  } catch {
+    return [];
+  }
+}
+
+/** Say a named person has seen this alarm. Authority accounts only. */
+export async function acknowledgeIncident(id: string): Promise<Incident | null> {
+  return incidentAction(`${API_BASE}/api/incidents/${id}/acknowledge`, {});
+}
+
+/** Close an incident and record what was done about it. Authority only. */
+export async function closeIncident(
+  id: string,
+  actionTaken: string,
+): Promise<Incident | null> {
+  return incidentAction(`${API_BASE}/api/incidents/${id}/close`, {
+    action_taken: actionTaken,
+  });
+}
+
+async function incidentAction(url: string, body: unknown): Promise<Incident | null> {
+  try {
+    const r = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...authHeader() },
+      body: JSON.stringify(body),
+    });
+    return r.ok ? ((await r.json()) as Incident) : null;
+  } catch {
+    return null;
+  }
+}
+
+export type Warning = {
+  id: string;
+  zone_id: string;
+  title: string;
+  body: string;
+  sent_at: string | null;
+  read: boolean;
+};
+
+/** The warnings sent to the person signed in. They cannot ask for anyone else's. */
+export async function fetchMyWarnings(): Promise<Warning[]> {
+  try {
+    const r = await fetch(`${API_BASE}/api/warnings/me`, { headers: authHeader() });
+    if (!r.ok) return [];
+    return ((await r.json()).warnings ?? []) as Warning[];
+  } catch {
+    return [];
   }
 }
 
@@ -107,7 +190,7 @@ export async function createOperatorZone(
   try {
     const r = await fetch(`${API_BASE}/api/zones/operator`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', ...authHeader() },
       body: JSON.stringify(z),
     });
     const body = await r.json();
@@ -120,7 +203,10 @@ export async function createOperatorZone(
 
 export async function deleteOperatorZone(zoneId: string): Promise<boolean> {
   try {
-    const r = await fetch(`${API_BASE}/api/zones/operator/${zoneId}`, { method: 'DELETE' });
+    const r = await fetch(`${API_BASE}/api/zones/operator/${zoneId}`, {
+      method: 'DELETE',
+      headers: authHeader(),
+    });
     return r.ok;
   } catch {
     return false;

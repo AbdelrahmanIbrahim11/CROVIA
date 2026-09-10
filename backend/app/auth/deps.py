@@ -74,3 +74,31 @@ def require_role(minimum: str):
 require_signed_in = current_user
 require_operator = require_role("admin")
 require_authority = require_role("authority")
+
+
+def phone_of(db, user: dict) -> str | None:
+    """
+    The caller's own phone number, looked up from their account.
+
+    Needed because a person's warnings and their consent are keyed by a hash of
+    their number, while a token identifies them by account id. Without this the
+    only way to offer "my warnings" would be to let the caller name the hash,
+    and a caller who can name any hash can read anyone's warnings.
+
+    Only citizen accounts have a number. Operators are not monitored.
+    """
+    import uuid
+
+    from app.usersDB.models import normal_user
+
+    if user.get("role") != "normal":
+        return None
+    try:
+        # The id column holds a real UUID, so the string carried in the token
+        # has to be converted first. Comparing the column to plain text makes
+        # SQLAlchemy reach for .hex on a str and raise.
+        user_id = uuid.UUID(str(user.get("sub")))
+    except (ValueError, TypeError):
+        return None
+    row = db.query(normal_user).filter(normal_user.id == user_id).one_or_none()
+    return str(row.number) if row and row.number else None

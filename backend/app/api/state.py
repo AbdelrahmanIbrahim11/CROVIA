@@ -12,6 +12,8 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
+from app.auth.deps import current_user, phone_of, require_operator
+from app.core.registry import hash_phone
 from app.core.city import city
 from app import runtime
 from app.runtime import get_engine
@@ -56,7 +58,7 @@ def get_city():
 
 
 @router.get("/state")
-def get_state():
+def get_state(_: dict = Depends(require_operator)):
     """The live picture: zone verdicts, alerts, predictions and spend."""
     e = get_engine()
     snap = e.snapshot()
@@ -79,7 +81,7 @@ def get_state():
 
 
 @router.post("/agent/step")
-def agent_step():
+def agent_step(_: dict = Depends(require_operator)):
     """
     Run one decision cycle.
 
@@ -95,7 +97,7 @@ def agent_step():
 
 
 @router.get("/agent/policy")
-def agent_policy():
+def agent_policy(_: dict = Depends(require_operator)):
     e = get_engine()
     policy = getattr(e, "_policy", None) or ai.build_policy()
     e._policy = policy
@@ -111,7 +113,7 @@ def agent_policy():
 
 
 @router.get("/alerts")
-def get_alerts():
+def get_alerts(_: dict = Depends(require_operator)):
     return {"alerts": get_engine().alerts}
 
 
@@ -121,7 +123,8 @@ class ConsentIn(BaseModel):
 
 
 @router.get("/incidents")
-def get_incidents(limit: int = 50, db: Session = Depends(getdb)):
+def get_incidents(limit: int = 50, db: Session = Depends(getdb),
+                  _: dict = Depends(require_operator)):
     """
     Alarms that have been recorded, newest first.
 
@@ -132,26 +135,46 @@ def get_incidents(limit: int = 50, db: Session = Depends(getdb)):
     return {"incidents": incidents.history(db, limit=limit)}
 
 
-@router.get("/warnings/{hashed_id}")
-def get_warnings(hashed_id: str, db: Session = Depends(getdb)):
+@router.get("/warnings/me")
+def my_warnings(db: Session = Depends(getdb), user: dict = Depends(current_user)):
     """
-    The warnings sent to one person.
+    The warnings sent to the person calling.
 
-    Addressed by hash, never by phone number - the number exists in exactly one
-    place and this is not it.
+    The caller cannot name whose warnings they want. The hash is derived from
+    their own account, so there is no id to guess and no way to read somebody
+    else's. That matters: a warning says where a named person was standing.
     """
+    phone = phone_of(db, user)
+    if not phone:
+        return {"warnings": [], "note": "only citizen accounts receive warnings"}
+    return {"warnings": warnings.inbox(db, hash_phone(phone))}
+
+
+@router.get("/warnings/{hashed_id}")
+def get_warnings(hashed_id: str, db: Session = Depends(getdb),
+                 _: dict = Depends(require_operator)):
+    """Any person's warnings, for operations. Addressed by hash, never by number."""
     return {"warnings": warnings.inbox(db, hashed_id)}
 
 
 @router.post("/warnings/{delivery_id}/read")
-def read_warning(delivery_id: str, db: Session = Depends(getdb)):
-    if not warnings.mark_read(db, delivery_id):
+def read_warning(delivery_id: str, db: Session = Depends(getdb),
+                 user: dict = Depends(current_user)):
+    """Mark one warning as seen. A citizen may only mark their own."""
+    owner = None
+    if user.get("role") == "normal":
+        phone = phone_of(db, user)
+        if not phone:
+            raise HTTPException(status_code=404, detail="no such warning")
+        owner = hash_phone(phone)
+    if not warnings.mark_read(db, delivery_id, owner_hash=owner):
         raise HTTPException(status_code=404, detail="no such warning")
     return {"status": "read"}
 
 
 @router.get("/warnings/coverage/{zone_id}")
-def warning_coverage(zone_id: str, db: Session = Depends(getdb)):
+def warning_coverage(zone_id: str, db: Session = Depends(getdb),
+                     _: dict = Depends(require_operator)):
     """
     How many people were reached about this zone, against how many are monitored
     at all. An operator needs the second number to read the first one honestly.
@@ -180,12 +203,14 @@ class OperatorZoneIn(BaseModel):
 
 
 @router.get("/zones/operator")
-def list_operator_zones(db: Session = Depends(getdb)):
+def list_operator_zones(db: Session = Depends(getdb),
+                        _: dict = Depends(require_operator)):
     return {"zones": operator_zones.listing(db)}
 
 
 @router.post("/zones/operator")
-def add_operator_zone(body: OperatorZoneIn, db: Session = Depends(getdb)):
+def add_operator_zone(body: OperatorZoneIn, db: Session = Depends(getdb),
+                      user: dict = Depends(require_operator)):
     """
     Watch a place the city plan does not know about: a gate open only tonight,
     a temporary barrier, the exit the away supporters are being sent to.
@@ -197,13 +222,14 @@ def add_operator_zone(body: OperatorZoneIn, db: Session = Depends(getdb)):
             db, city, get_engine(), label=body.label, district_id=body.district_id,
             lat=body.lat, lon=body.lon, radius_m=body.radius_m,
             width_m=body.width_m, length_m=body.length_m, risk=body.risk,
-            created_by=body.created_by)
+            created_by=user.get('username'))
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc))
 
 
 @router.delete("/zones/operator/{zone_id}")
-def delete_operator_zone(zone_id: str, db: Session = Depends(getdb)):
+def delete_operator_zone(zone_id: str, db: Session = Depends(getdb),
+                         _: dict = Depends(require_operator)):
     if not operator_zones.remove(db, city, get_engine(), zone_id):
         raise HTTPException(status_code=404,
                             detail="no drawn zone with that id - zones from the "
@@ -211,15 +237,35 @@ def delete_operator_zone(zone_id: str, db: Session = Depends(getdb)):
     return {"status": "removed"}
 
 
+def _own_number_or_operator(db: Session, user: dict, phone_number: str) -> None:
+    """
+    A citizen may only grant or withdraw consent for their own number.
+
+    Without this check anyone signed in could withdraw a stranger's consent and
+    switch off the monitoring that protects them, or enrol a number that never
+    agreed to anything.
+    """
+    if user.get("role") != "normal":
+        return
+    own = phone_of(db, user)
+    if own != phone_number:
+        raise HTTPException(status_code=403,
+                            detail="you can only change consent for your own number")
+
+
 @router.post("/consent")
-def post_consent(body: ConsentIn, db: Session = Depends(getdb)):
+def post_consent(body: ConsentIn, db: Session = Depends(getdb),
+                 user: dict = Depends(current_user)):
+    _own_number_or_operator(db, user, body.phone_number)
     row = enrollment.grant_consent(db, body.phone_number, body.scope)
     return {"hashed_id": row.hashed_id, "granted_at": row.granted_at, "scope": row.scope}
 
 
 @router.delete("/consent")
-def delete_consent(body: ConsentIn, db: Session = Depends(getdb)):
+def delete_consent(body: ConsentIn, db: Session = Depends(getdb),
+                   user: dict = Depends(current_user)):
     """Withdraw permission. Monitoring stops in the same transaction."""
+    _own_number_or_operator(db, user, body.phone_number)
     if not enrollment.revoke_consent(db, body.phone_number):
         raise HTTPException(status_code=404, detail="no consent on file for that number")
     return {"status": "revoked"}
@@ -232,7 +278,8 @@ class EnrolIn(BaseModel):
 
 
 @router.post("/enrol")
-def post_enrol(body: EnrolIn, db: Session = Depends(getdb)):
+def post_enrol(body: EnrolIn, db: Session = Depends(getdb),
+               _: dict = Depends(require_operator)):
     dev = enrollment.enrol(db, body.phone_number, body.role, body.district_id)
     if dev is None:
         raise HTTPException(status_code=403,
@@ -249,7 +296,8 @@ def post_enrol(body: EnrolIn, db: Session = Depends(getdb)):
 
 
 @router.post("/enrol/auto")
-def post_auto_enrol(db: Session = Depends(getdb)):
+def post_auto_enrol(db: Session = Depends(getdb),
+                    _: dict = Depends(require_operator)):
     """Build the fleet and the panel from everyone who has consented."""
     e = get_engine()
     out = enrollment.auto_enrol_users(db, districts=list(city.districts))

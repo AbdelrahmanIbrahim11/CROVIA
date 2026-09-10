@@ -143,8 +143,18 @@ def inbox(db: Session, hashed_id: str, limit: int = 20) -> list[dict]:
     ]
 
 
-def mark_read(db: Session, delivery_id: str) -> bool:
-    row = db.query(alert_delivery).filter(alert_delivery.id == delivery_id).one_or_none()
+def mark_read(db: Session, delivery_id: str, owner_hash: str | None = None) -> bool:
+    """
+    Mark one warning as seen.
+
+    When owner_hash is given the row must belong to that person, and a warning
+    belonging to somebody else is reported as not found rather than as
+    forbidden - confirming that an id exists is itself a leak.
+    """
+    q = db.query(alert_delivery).filter(alert_delivery.id == delivery_id)
+    if owner_hash is not None:
+        q = q.filter(alert_delivery.hashed_id == owner_hash)
+    row = q.one_or_none()
     if row is None:
         return False
     row.read_at = datetime.now(timezone.utc)

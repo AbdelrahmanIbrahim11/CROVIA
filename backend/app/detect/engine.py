@@ -348,7 +348,7 @@ class Engine:
         # be near the crowd the count stays near zero for ever. That is worst
         # exactly when budget is tight and the subset is smallest.
         chosen = self._rng.sample(panel, take) if take < len(panel) else list(panel)
-        inside = checked = 0
+        inside = checked = unknown = 0
         for hashed in chosen:
             phone = self.registry.vault.phone_for(hashed)
             if not phone:
@@ -357,11 +357,37 @@ class Engine:
                 r = self.client.verify_location(phone, area, z.district_id)
             except ApiError:
                 continue
+            # Paid for either way, so the ledger is charged before the answer
+            # is examined.
             self.budget.spend(1, self.now)
-            checked += 1
             res = r["verification_result"]
+
+            # UNKNOWN means the network could not tell, NOT that the person is
+            # elsewhere. Counting it in the denominator quietly shrinks every
+            # estimate: measured against the live network, 23% of answers come
+            # back UNKNOWN, so a crowd of 10,000 was being reported as 7,700 -
+            # a 23% under-count of the one number the alarm depends on.
+            #
+            # It is excluded from both sides instead. The remaining answers are
+            # still a fair sample of the people the network CAN see.
+            if res == "UNKNOWN":
+                unknown += 1
+                continue
+
+            checked += 1
             if res == "TRUE" or (res == "PARTIAL" and r.get("match_rate", 0) >= 55):
                 inside += 1
+
+        if unknown and checked:
+            share = unknown / (unknown + checked)
+            if share >= 0.4:
+                # Worth saying out loud: the sample cost full price and came
+                # back mostly unusable, so the estimate rests on fewer devices
+                # than the cadence intended.
+                self.log("thin_sample",
+                         f"{share:.0%} of answers for {zone_id[5:]} were UNKNOWN - "
+                         f"the estimate rests on {checked} devices, not {checked + unknown}",
+                         zone=zone_id)
 
         people = self.registry.people_from_panel(inside, checked, self.city.population)
         return people, inside, checked

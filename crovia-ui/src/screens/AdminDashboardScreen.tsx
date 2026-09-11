@@ -9,18 +9,14 @@ import { StatusChip } from '../components/StatusChip';
 import { MotionButton } from '../components/MotionButton';
 import {
   blobs,
-  clusters as demoClusters,
-  districtOverlays as demoDistricts,
   markers,
   REGION,
-  zoneOverlays as demoZones,
-  zoneRows as demoRows,
 } from '../data';
 import { createOperatorZone, toOverlays } from '../api';
 import { useLiveState } from '../useLiveState';
 import { districts, zoneById } from '../geo';
 
-type Tool = null | 'draw' | 'reroute' | 'measure';
+type Tool = null | 'draw';
 
 const bgColor = '#161A28';
 const accentColor = '#F2A93B';
@@ -45,14 +41,20 @@ export function AdminDashboardScreen({
   extraToolbar?: React.ReactNode;
   roleLabel?: string;
 }) {
-  // Live state when the backend is reachable, demo data when it is not. The
-  // map itself never depends on the backend, because the geography comes from
-  // the same file both sides read.
   const { state, connection } = useLiveState(5000);
+
+  if (connection === 'connecting') {
+    return (
+      <Center flex={1} bg={bgColor}>
+        <Text color={textMuted}>Connecting to CROVIA...</Text>
+      </Center>
+    );
+  }
+
   const live = state ? toOverlays(state) : null;
-  const districtOverlays = live?.districts ?? demoDistricts;
-  const zoneOverlays = live?.zones ?? demoZones;
-  const clusters = live?.clusters ?? demoClusters;
+  const districtOverlays = live?.districts ?? [];
+  const zoneOverlays = live?.zones ?? [];
+  const clusters = live?.clusters ?? [];
 
   const zoneRows = state
     ? Object.entries(state.zones)
@@ -73,7 +75,7 @@ export function AdminDashboardScreen({
             : 'calm') as 'critical' | 'elevated' | 'watch' | 'calm',
         }))
         .sort((a, b) => b.score - a.score)
-    : demoRows;
+    : [];
 
   // Headline figures, from live state when there is any.
   const topScore = zoneRows.length ? Math.max(...zoneRows.map((z) => z.score)) : 0;
@@ -84,7 +86,7 @@ export function AdminDashboardScreen({
           0,
         ),
       ).toLocaleString()
-    : '4,400';
+    : '0';
 
   const criticalCount = zoneRows.filter((z) => z.level === 'critical').length;
 
@@ -140,8 +142,6 @@ export function AdminDashboardScreen({
 
   const tools: { key: Exclude<Tool, null>; label: string; glyph: string }[] = [
     { key: 'draw', label: 'Draw zone', glyph: '▱' },
-    { key: 'reroute', label: 'Reroute', glyph: '⤳' },
-    { key: 'measure', label: 'Measure', glyph: '⇔' },
   ];
 
   return (
@@ -212,11 +212,7 @@ export function AdminDashboardScreen({
               p="$3"
             >
               <Text size="sm" color={accentColor} fontWeight="$bold">
-                {tool === 'draw'
-                  ? 'Tap the place you want watched. You will be asked how wide its narrow point is.'
-                  : tool === 'reroute'
-                  ? 'Drag from a congested zone to the destination you want people sent towards.'
-                  : 'Tap two points to measure the distance between them.'}
+                Tap the place you want watched. You will be asked how wide its narrow point is.
               </Text>
             </Box>
           ) : null}
@@ -254,7 +250,7 @@ export function AdminDashboardScreen({
                       ? criticalCount > 0
                         ? `${criticalCount} critical`
                         : 'all clear'
-                      : '1 critical'
+                      : 'offline'
                   }
                 />
                 <Text size="xl" color={textMuted}>{railOpen ? '⌄' : '⌃'}</Text>
@@ -266,16 +262,16 @@ export function AdminDashboardScreen({
             <>
               <HStack borderTopWidth={1} borderBottomWidth={1} borderColor={borderColor} py="$4" space="md">
                 <Metric
-                  value={state ? String(topScore) : '78'}
+                  value={state ? String(topScore) : '—'}
                   label="Highest severity"
                   tint={topScore >= 75 ? '#ff4444' : accentColor}
                 />
                 <Metric
-                  value={state ? peopleWatched : '4,400'}
+                  value={state ? peopleWatched : '—'}
                   label="People estimated"
                 />
                 <Metric
-                  value={state ? String(state.monitored.panel) : '12'}
+                  value={state ? String(state.monitored.panel) : '—'}
                   label="Panel devices"
                   tint="#33b5e5"
                 />

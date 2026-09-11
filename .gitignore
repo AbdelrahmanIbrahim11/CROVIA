@@ -27,12 +27,6 @@ pip-selfcheck.json
 
 # Custom python interpreter
 .Python
-[Bb]in
-[Ii]nclude
-[Ll]ib
-[Ll]ib64
-[Ll]ocal
-[Ss]cripts
 
 # ---------------------------------------------------------------------------
 # Python build artefacts
@@ -49,4 +43,11 @@ __pycache__/
 backend/crovia.db
 *.db
 
-
+# Python virtualenv folders, named precisely.
+#
+# This used to read [Bb]in, [Ll]ib, [Ss]cripts and so on, copied from a
+# template for another language. Those match a folder of that name ANYWHERE in
+# the repository, so crovia-ui/scripts/ was one command away from vanishing and
+# any future backend/lib/ would have disappeared without a word.
+backend/venv/
+backend/.venv/

@@ -43,6 +43,22 @@ export function AdminDashboardScreen({
 }) {
   const { state, connection } = useLiveState(5000);
 
+  const [tool, setTool] = useState<Tool>(null);
+  const [railOpen, setRailOpen] = useState(true);
+  const [settingsOpen, setSettingsOpen] = useState(false);
+
+  // Drawing a watch zone. The operator taps the map, then supplies the two
+  // numbers the danger rule cannot work without: how wide the narrow point is
+  // and how long it runs. Those are things a gate manager knows; guessing them
+  // would produce a capacity figure with nothing behind it.
+  const [draft, setDraft] = useState<LatLon | null>(null);
+  const [label, setLabel] = useState('');
+  const [widthM, setWidthM] = useState('6');
+  const [lengthM, setLengthM] = useState('40');
+  const [radiusM, setRadiusM] = useState('600');
+  const [saveError, setSaveError] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+
   if (connection === 'connecting') {
     return (
       <Center flex={1} bg={bgColor}>
@@ -90,21 +106,7 @@ export function AdminDashboardScreen({
 
   const criticalCount = zoneRows.filter((z) => z.level === 'critical').length;
 
-  const [tool, setTool] = useState<Tool>(null);
-  const [railOpen, setRailOpen] = useState(true);
-  const [settingsOpen, setSettingsOpen] = useState(false);
 
-  // Drawing a watch zone. The operator taps the map, then supplies the two
-  // numbers the danger rule cannot work without: how wide the narrow point is
-  // and how long it runs. Those are things a gate manager knows; guessing them
-  // would produce a capacity figure with nothing behind it.
-  const [draft, setDraft] = useState<LatLon | null>(null);
-  const [label, setLabel] = useState('');
-  const [widthM, setWidthM] = useState('6');
-  const [lengthM, setLengthM] = useState('40');
-  const [radiusM, setRadiusM] = useState('600');
-  const [saveError, setSaveError] = useState<string | null>(null);
-  const [saving, setSaving] = useState(false);
 
   /** Nearest district to the tapped point — that is the unit the network resolves to. */
   function nearestDistrict(p: LatLon): string {

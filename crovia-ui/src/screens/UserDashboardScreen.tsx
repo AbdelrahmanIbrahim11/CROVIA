@@ -39,6 +39,11 @@ export function UserDashboardScreen({
 }) {
   const { state, connection } = useLiveState(5000);
 
+  const [selected, setSelected] = useState<MarkerData | null>(null);
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [alertOpen, setAlertOpen] = useState(false);
+  const [toastVisible, setToastVisible] = useState(true);
+
   if (connection === 'connecting') {
     return (
       <Center flex={1} bg={bgColor}>
@@ -110,10 +115,7 @@ export function UserDashboardScreen({
       }
     : null;
 
-  const [selected, setSelected] = useState<MarkerData | null>(null);
-  const [settingsOpen, setSettingsOpen] = useState(false);
-  const [alertOpen, setAlertOpen] = useState(false);
-  const [toastVisible, setToastVisible] = useState(true);
+
 
   return (
     <VStack flex={1} bg={bgColor}>

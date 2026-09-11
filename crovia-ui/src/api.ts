@@ -24,8 +24,32 @@ const DEFAULT_BASE = 'http://localhost:8000';
 // in Node, and pulling Node's globals in would let server-only APIs typecheck.
 declare const process: { env?: Record<string, string | undefined> } | undefined;
 
-export const API_BASE: string =
-  (typeof process !== 'undefined' && process?.env?.EXPO_PUBLIC_API_BASE) || DEFAULT_BASE;
+/**
+ * Where the backend is.
+ *
+ * EXPO_PUBLIC_API_BASE wins if it is set. Otherwise the address is worked out
+ * from the page itself: whatever host served the app, on port 8000.
+ *
+ * Hard-coding localhost broke the app whenever it was opened at anything other
+ * than localhost - a phone on the same wifi reaching 192.168.x.x, for example,
+ * would ask its OWN localhost for the backend, find nothing, and report that
+ * CROVIA was unreachable when the service was running perfectly.
+ */
+function resolveApiBase(): string {
+  const configured =
+    typeof process !== 'undefined' ? process?.env?.EXPO_PUBLIC_API_BASE : undefined;
+  if (configured) return configured;
+
+  // Web: follow the host the page came from. Native has no window.location,
+  // so it falls back to localhost, which is right for a simulator.
+  if (typeof window !== 'undefined' && window.location?.hostname) {
+    const { protocol, hostname } = window.location;
+    return `${protocol}//${hostname}:8000`;
+  }
+  return DEFAULT_BASE;
+}
+
+export const API_BASE: string = resolveApiBase();
 
 export type ZoneVerdict = {
   zone_id: string;

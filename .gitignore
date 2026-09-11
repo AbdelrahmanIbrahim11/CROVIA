@@ -48,3 +48,5 @@ __pycache__/
 # Runtime database. Regenerated on start; must not be committed.
 backend/crovia.db
 *.db
+
+

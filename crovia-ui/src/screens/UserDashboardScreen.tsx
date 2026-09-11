@@ -65,7 +65,7 @@ export function UserDashboardScreen({
     : 'calm';
 
   const headline = !live
-    ? 'Not connected'
+    ? 'Cannot reach CROVIA'
     : liveAlert
     ? 'Avoid this area'
     : 'Your area right now';
@@ -122,10 +122,24 @@ export function UserDashboardScreen({
       }
     : null;
 
-  const [zoneOpen, setZoneOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [alertOpen, setAlertOpen] = useState(false);
   const [toastVisible, setToastVisible] = useState(true);
+
+  // Shown once, on first open, while the first poll is in flight. Without it
+  // the screen reads "Cannot reach CROVIA" for a second before the data
+  // arrives, which looks like a failure rather than a load.
+  //
+  // It sits below every hook on purpose: an early return placed above a
+  // useState changes the number of hooks between renders, which React treats
+  // as an error.
+  if (connection === 'connecting') {
+    return (
+      <Center flex={1} bg={bgColor}>
+        <Text color={textMuted}>Connecting to CROVIA…</Text>
+      </Center>
+    );
+  }
 
   return (
     <VStack flex={1} bg={bgColor}>
@@ -158,7 +172,7 @@ export function UserDashboardScreen({
           <VStack
             position="absolute"
             left="$4"
-            bottom={200}
+            bottom={260}
             bg="rgba(30, 35, 54, 0.9)"
             borderWidth={1}
             borderColor={borderColor}
@@ -177,21 +191,7 @@ export function UserDashboardScreen({
                 <Text size="xs" color={textMuted} fontWeight="$medium">{row.l}</Text>
               </HStack>
             ))}
-          </VStack>
-
-          {/* Zone lookup trigger */}
-          <Pressable
-            onPress={() => setZoneOpen(true)}
-            accessibilityRole="button"
-            position="absolute"
-            right="$4"
-            bottom={200}
-          >
-            <Center w={48} h={48} bg="rgba(30, 35, 54, 0.9)" borderWidth={1} borderColor={borderColor} borderRadius="$lg">
-              <Text size="2xl" color={accentColor}>◎</Text>
-            </Center>
-          </Pressable>
-        </CityMap>
+          </VStack>        </CityMap>
 
         {/* Standing status card */}
         <VStack
@@ -250,50 +250,6 @@ export function UserDashboardScreen({
       </Sheet>
 
       {/* Zone lookup */}
-      <Sheet visible={zoneOpen} title="Check a specific spot" onClose={() => setZoneOpen(false)}>
-        <Text size="sm" color={textMuted}>
-          Enter a point and a radius to see crowd conditions there before you travel.
-        </Text>
-        <HStack space="md">
-          <VStack space="xs" flex={1}>
-            <Text size="xs" color={textPrimary} fontWeight="$bold">Latitude</Text>
-            <Input variant="outline" size="xl" borderRadius="$lg" borderColor={borderColor} $focus-borderColor={accentColor}>
-              <GluestackInputField placeholder="31.2404" keyboardType="numeric" color={textPrimary} placeholderTextColor="#6B7280" />
-            </Input>
-          </VStack>
-          <VStack space="xs" flex={1}>
-            <Text size="xs" color={textPrimary} fontWeight="$bold">Longitude</Text>
-            <Input variant="outline" size="xl" borderRadius="$lg" borderColor={borderColor} $focus-borderColor={accentColor}>
-              <GluestackInputField placeholder="29.9553" keyboardType="numeric" color={textPrimary} placeholderTextColor="#6B7280" />
-            </Input>
-          </VStack>
-        </HStack>
-        <VStack space="xs">
-          <Text size="xs" color={textPrimary} fontWeight="$bold">Radius in metres</Text>
-          <Input variant="outline" size="xl" borderRadius="$lg" borderColor={borderColor} $focus-borderColor={accentColor}>
-            <GluestackInputField placeholder="500" keyboardType="numeric" color={textPrimary} placeholderTextColor="#6B7280" />
-          </Input>
-        </VStack>
-        
-        <HStack space="md" mt="$2">
-          <MotionButton 
-            label="Check this area"
-            color={accentColor}
-            textColor="#161A28"
-            flex={1}
-            onPress={() => setZoneOpen(false)}
-          />
-          <MotionButton 
-            label="Cancel"
-            variant="outline"
-            color={borderColor}
-            textColor={textPrimary}
-            flex={1}
-            onPress={() => setZoneOpen(false)}
-          />
-        </HStack>
-      </Sheet>
-
       {/* Settings */}
       <Sheet visible={settingsOpen} title="Settings" onClose={() => setSettingsOpen(false)}>
         <ScrollView style={{ maxHeight: 300 }}>

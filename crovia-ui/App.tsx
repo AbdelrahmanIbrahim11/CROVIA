@@ -59,6 +59,8 @@ function Shell() {
   }, [session?.token]);
 
   // Real, and only for a citizen - an operator is not warned personally.
+  // Both sides removed the hardcoded demo count; this keeps the version that
+  // replaces it with the person's actual unread warnings rather than zero.
   const unread = useUnreadWarnings();
 
   const handleSignIn = (s: Session) => {

@@ -35,6 +35,7 @@ from typing import Callable
 from sqlalchemy.orm import Session
 
 from app.core.city import city
+from app.services import push
 from app.usersDB.models import alert_delivery, device_consent, monitored_device
 
 logger = logging.getLogger("crovia.warnings")
@@ -122,6 +123,10 @@ def warn_people_near(db: Session, registry, record: dict,
         .all()
     }
 
+    # Look up where these people can be reached on a phone, once, before the
+    # loop. One query rather than one per person.
+    phone_tokens = push.tokens_for(db, recipients)
+
     sent = failed = 0
     for hashed in recipients:
         if hashed in already:
@@ -140,11 +145,34 @@ def warn_people_near(db: Session, registry, record: dict,
             sent += 1
     db.commit()
 
-    logger.info("warned %d people in %s about %s (%d failed, %d already warned)",
-                sent, zone.district_id, zone_id, failed, len(already))
+    # Now make the phones buzz.
+    #
+    # Done after the rows are committed, on purpose. The database is the record
+    # that a person was warned; the notification is only the delivery. If the
+    # push service is slow or down, the warning still exists and still appears
+    # in the app, which is the part that must never depend on a third party.
+    to_push: list[str] = []
+    for hashed in recipients:
+        if hashed in already:
+            continue
+        to_push.extend(phone_tokens.get(hashed, []))
+
+    pushed = {"accepted": 0, "failed": 0}
+    if to_push:
+        pushed = push.send(db, to_push, title, body,
+                           data={"zone_id": zone_id, "kind": "crowd_warning"})
+
+    logger.info("warned %d people in %s about %s (%d failed, %d already warned, "
+                "%d phones reached)",
+                sent, zone.district_id, zone_id, failed, len(already),
+                pushed["accepted"])
     return {"sent": sent, "failed": failed, "already_warned": len(already),
             "district_id": zone.district_id,
-            "in_district": len(in_district), "location_unknown": len(unplaced)}
+            "in_district": len(in_district), "location_unknown": len(unplaced),
+            # How many were reached on a phone, against how many were told at
+            # all. A person with no app installed is warned in the app only.
+            "pushed": pushed["accepted"], "push_failed": pushed["failed"],
+            "no_phone_registered": sent - len(to_push) if sent >= len(to_push) else 0}
 
 
 def _consented_hashes(db: Session) -> list[str]:

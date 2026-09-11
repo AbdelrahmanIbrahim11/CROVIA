@@ -13,6 +13,7 @@ import { UserDashboardScreen } from './src/screens/UserDashboardScreen';
 import { ThemeProvider } from './src/theme/ThemeProvider';
 import { ErrorBoundary } from './src/components/ErrorBoundary';
 import { useUnreadWarnings } from './src/useLiveState';
+import { onNotificationTap, registerForPush, unregisterPush } from './src/push';
 import {
   Session,
   clearSession,
@@ -63,17 +64,36 @@ function Shell() {
   // replaces it with the person's actual unread warnings rather than zero.
   const unread = useUnreadWarnings();
 
+  // The address this phone can be reached at, kept so it can be handed back
+  // when the person signs out.
+  const [pushToken, setPushToken] = useState<string | null>(null);
+
   const handleSignIn = (s: Session) => {
     setSession(s);
     setTab('map');
     setRoute(HOME[s.role]);
+
+    // Ask for notification permission here rather than on first launch. At
+    // first launch a person has no idea what the app does and says no out of
+    // habit; here they have just asked to be warned about crowds, so the
+    // request explains itself. Only citizens are warned personally.
+    if (s.role === 'normal') {
+      registerForPush().then(setPushToken);
+    }
   };
 
   const handleSignOut = async () => {
+    await unregisterPush(pushToken);
+    setPushToken(null);
     await apiSignOut();
     setSession(null);
     setRoute('signin');
   };
+
+  // Tapping a warning opens the Alerts tab, where the message and what to do
+  // about it are. Opening the map would show the city and leave the person to
+  // find the thing that just interrupted them.
+  useEffect(() => onNotificationTap(() => setTab('alerts')), []);
 
   let body: React.ReactNode = null;
 

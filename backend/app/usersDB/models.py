@@ -225,3 +225,34 @@ class operator_zone(base):
     created_by = Column(String(80), nullable=True)
     created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
     active = Column(Boolean, nullable=False, default=True)
+
+
+class push_token(base):
+    """
+    Where a person's phone can be reached.
+
+    A push token is an address the phone's operating system hands out, and it
+    only exists on a real installed app - a browser has none to give. One row
+    per device rather than per person, because someone may carry a phone and a
+    tablet and a warning that reaches only one of them is a warning that may
+    reach neither.
+
+    Stored against the hash, like everything else outside the vault. A push
+    token is not a phone number, but it is still a way to reach a named person,
+    so it is treated with the same care.
+
+    Tokens expire and are reissued. The same device re-registering replaces its
+    row rather than adding one, otherwise a person accumulates dead addresses
+    and every alarm is sent to all of them.
+    """
+
+    __tablename__ = "push_tokens"
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    hashed_id = Column(String(32), nullable=False, index=True)
+    token = Column(String(255), nullable=False, unique=True)
+    platform = Column(String(20), nullable=True)      # ios | android | web
+    created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+    last_seen_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+    # Set when the push service says the address is dead, so it is not tried
+    # again and the operator can see coverage honestly.
+    invalid_reason = Column(String(200), nullable=True)

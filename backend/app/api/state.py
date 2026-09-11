@@ -18,7 +18,7 @@ from app.core.city import city
 from app import runtime
 from app.runtime import get_engine
 from app.ai import graph as ai
-from app.services import enrollment, incidents, operator_zones, warnings
+from app.services import enrollment, incidents, operator_zones, push, warnings
 from app.usersDB.db import getdb
 
 router = APIRouter(prefix="/api", tags=["state"])
@@ -272,6 +272,52 @@ def get_nearby(db: Session = Depends(getdb), user: dict = Depends(current_user))
         "my_warnings": mine,
         "monitored": bool(phone),
     }
+
+
+class PushTokenIn(BaseModel):
+    """The address a phone's operating system gave the app."""
+
+    token: str
+    platform: str | None = None
+
+
+@router.post("/push/register")
+def register_push(body: PushTokenIn, db: Session = Depends(getdb),
+                  user: dict = Depends(current_user)):
+    """
+    Remember where this person's phone can be reached.
+
+    Stored against their hash, worked out from their own account - the caller
+    cannot register a device on somebody else's behalf.
+
+    Only a citizen account has a phone to warn. An operator watches the city;
+    they are not the ones being told to avoid it.
+    """
+    phone = phone_of(db, user)
+    if not phone:
+        raise HTTPException(status_code=400,
+                            detail="only a citizen account receives warnings")
+    row = push.register(db, hash_phone(phone), body.token.strip(), body.platform)
+    return {"registered": True, "platform": row.platform}
+
+
+@router.delete("/push/register")
+def unregister_push(body: PushTokenIn, db: Session = Depends(getdb),
+                    _: dict = Depends(current_user)):
+    """Forget a device, when a person signs out or turns warnings off."""
+    return {"removed": push.unregister(db, body.token.strip())}
+
+
+@router.get("/push/coverage")
+def push_coverage(db: Session = Depends(getdb),
+                  _: dict = Depends(require_operator)):
+    """
+    How many people can actually be reached on a phone.
+
+    An operator needs this next to the warning count: "we warned 400 people"
+    means something different when only 12 of them have the app installed.
+    """
+    return push.coverage(db)
 
 
 @router.get("/warnings/me")

@@ -41,12 +41,38 @@ services:
       # the safe default - citizen sign-up stays open either way.
       - key: STAFF_INVITE_CODE
         generateValue: true
-      # Optional. Without them the system still runs: the twin replaces Nokia,
-      # and deterministic rules replace the model.
+      # Optional. Without them the system still runs: Nokia's published test
+      # numbers replace the live network, and deterministic rules replace the
+      # model. Neither absence stops detection.
       - key: NOKIA_NAC_API_KEY
         sync: false
       - key: GROQ_API_KEY
         sync: false
+      # Only needed if your Nokia key is not a RapidAPI one. A key pointed at
+      # the wrong host fails with an error that looks exactly like a bad key.
+      - key: NOKIA_NAC_HOST
+        sync: false
+
+      # Priority for responders during an incident (Quality on Demand).
+      #
+      # Leave either of the first two empty and the feature stays off - the
+      # alarm, the warnings and the app all work without it.
+      #
+      # AUTHORITY_DEVICES is the phone numbers on duty, comma separated.
+      # QOD_APP_SERVER_IP is this service's own public IP: QoD protects the
+      # route to ONE named server, so without it there is nothing to protect.
+      - key: AUTHORITY_DEVICES
+        sync: false
+      - key: QOD_APP_SERVER_IP
+        sync: false
+      # QOS_E holds latency steady under congestion, which is what a map and an
+      # acknowledge button need. The larger profiles chase throughput instead.
+      - key: QOD_PROFILE
+        value: QOS_E
+      # Sessions are billed while they live. An hour is long enough for an
+      # incident and short enough that one forgotten by a crash expires itself.
+      - key: QOD_DURATION_SECONDS
+        value: "3600"
 
 databases:
   - name: crovia-db

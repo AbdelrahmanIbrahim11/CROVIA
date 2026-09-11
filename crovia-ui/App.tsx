@@ -3,7 +3,6 @@ import { SafeAreaView, StatusBar, View } from 'react-native';
 import { GluestackUIProvider } from '@gluestack-ui/themed';
 import { config } from '@gluestack-ui/config';
 import { TabBar, TabKey } from './src/components/Chrome';
-import { notifications } from './src/data';
 import { AdminDashboardScreen } from './src/screens/AdminDashboardScreen';
 import { NotificationsScreen } from './src/screens/NotificationsScreen';
 import { PoliceDashboardScreen } from './src/screens/PoliceDashboardScreen';
@@ -13,6 +12,7 @@ import { SignUpScreen } from './src/screens/SignUpScreen';
 import { UserDashboardScreen } from './src/screens/UserDashboardScreen';
 import { ThemeProvider } from './src/theme/ThemeProvider';
 import { ErrorBoundary } from './src/components/ErrorBoundary';
+import { useUnreadWarnings } from './src/useLiveState';
 import {
   Session,
   clearSession,
@@ -58,7 +58,8 @@ function Shell() {
     // Runs once per signed-in session, not on every render.
   }, [session?.token]);
 
-  const unread = notifications.filter((n) => n.unread).length;
+  // Real, and only for a citizen - an operator is not warned personally.
+  const unread = useUnreadWarnings();
 
   const handleSignIn = (s: Session) => {
     setSession(s);

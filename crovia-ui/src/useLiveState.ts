@@ -7,7 +7,7 @@
  */
 
 import { useEffect, useRef, useState } from 'react';
-import { LiveState, NearbyState, fetchLiveState, fetchNearby } from './api';
+import { LiveState, NearbyState, fetchLiveState, fetchMyWarnings, fetchNearby } from './api';
 
 export type Connection = 'connecting' | 'live' | 'offline';
 
@@ -81,4 +81,32 @@ export function useNearby(intervalMs = 5000) {
   }, [intervalMs]);
 
   return { state, connection };
+}
+
+/**
+ * How many warnings this person has not read yet.
+ *
+ * The tab badge used to count a list of sample notifications written into the
+ * app, so it read "3" for everybody, forever, including someone who had never
+ * been warned about anything. A badge that is always on is a badge nobody
+ * looks at.
+ */
+export function useUnreadWarnings(intervalMs = 15000) {
+  const [unread, setUnread] = useState(0);
+
+  useEffect(() => {
+    let cancelled = false;
+    const tick = async () => {
+      const w = await fetchMyWarnings();
+      if (!cancelled) setUnread(w.filter((x) => !x.read).length);
+    };
+    tick();
+    const timer = setInterval(tick, intervalMs);
+    return () => {
+      cancelled = true;
+      clearInterval(timer);
+    };
+  }, [intervalMs]);
+
+  return unread;
 }

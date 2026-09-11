@@ -12,11 +12,10 @@ import {
 } from '@gluestack-ui/themed';
 import { AppHeader, Sheet } from '../components/Chrome';
 import { CityMap } from '../components/CityMap';
-import { MarkerData } from '../components/MapMarker';
 import { Toast } from '../components/NotificationCard';
 import { StatusChip } from '../components/StatusChip';
 import { MotionButton } from '../components/MotionButton';
-import { blobs, clusters as demoClusters, markers, REGION, REGION_SUB } from '../data';
+import { REGION, REGION_SUB } from '../data';
 import { useNearby } from '../useLiveState';
 import type { Notification } from '../components/NotificationCard';
 import { bottleneckOf, segmentPath, zoneById } from '../geo';
@@ -103,7 +102,7 @@ export function UserDashboardScreen({
           };
         })
         .filter((c): c is CrowdCluster => c !== null))
-    : demoClusters;
+    : [];
 
   // Unread warnings addressed to this person, for the bell.
   const unreadMine = state?.my_warnings?.filter((w) => !w.read).length ?? 0;
@@ -123,7 +122,6 @@ export function UserDashboardScreen({
       }
     : null;
 
-  const [selected, setSelected] = useState<MarkerData | null>(null);
   const [zoneOpen, setZoneOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [alertOpen, setAlertOpen] = useState(false);
@@ -147,11 +145,7 @@ export function UserDashboardScreen({
 
       <Box flex={1}>
         <CityMap
-          markers={markers}
-          blobs={blobs}
           clusters={clusters}
-          activeMarkerId={selected?.id}
-          onMarkerPress={setSelected}
         >
           {/* Live alert banner floats over the map, and only when one exists */}
           {toastVisible && toastItem ? (
@@ -234,34 +228,6 @@ export function UserDashboardScreen({
           ) : null}
         </VStack>
       </Box>
-
-      {/* Marker detail */}
-      <Sheet
-        visible={!!selected}
-        title={selected?.name ?? ''}
-        onClose={() => setSelected(null)}
-      >
-        <Text size="md" color={textMuted} lineHeight="$md">{selected?.detail}</Text>
-        <Text size="sm" color={accentColor} fontWeight="$bold">{selected?.distance} from you</Text>
-        
-        <HStack space="md" mt="$4">
-          <MotionButton 
-            label="Get directions"
-            color={accentColor}
-            textColor="#161A28"
-            flex={1}
-            onPress={() => setSelected(null)}
-          />
-          <MotionButton 
-            label="Close"
-            variant="outline"
-            color={borderColor}
-            textColor={textPrimary}
-            flex={1}
-            onPress={() => setSelected(null)}
-          />
-        </HStack>
-      </Sheet>
 
       {/* What to do about the live alarm */}
       <Sheet

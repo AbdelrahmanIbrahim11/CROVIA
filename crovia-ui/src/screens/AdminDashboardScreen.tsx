@@ -7,15 +7,7 @@ import { LatLon } from '../geo';
 import { CityMap } from '../components/CityMap';
 import { StatusChip } from '../components/StatusChip';
 import { MotionButton } from '../components/MotionButton';
-import {
-  blobs,
-  clusters as demoClusters,
-  districtOverlays as demoDistricts,
-  markers,
-  REGION,
-  zoneOverlays as demoZones,
-  zoneRows as demoRows,
-} from '../data';
+import { REGION } from '../data';
 import { createOperatorZone, toOverlays } from '../api';
 import { useLiveState } from '../useLiveState';
 import { districts, zoneById } from '../geo';
@@ -50,9 +42,11 @@ export function AdminDashboardScreen({
   // the same file both sides read.
   const { state, connection } = useLiveState(5000);
   const live = state ? toOverlays(state) : null;
-  const districtOverlays = live?.districts ?? demoDistricts;
-  const zoneOverlays = live?.zones ?? demoZones;
-  const clusters = live?.clusters ?? demoClusters;
+  // Nothing invented. With no backend the map draws the city and no state,
+  // which is the truth, rather than showing a crowd that is not there.
+  const districtOverlays = live?.districts ?? [];
+  const zoneOverlays = live?.zones ?? [];
+  const clusters = live?.clusters ?? [];
 
   const zoneRows = state
     ? Object.entries(state.zones)
@@ -73,7 +67,7 @@ export function AdminDashboardScreen({
             : 'calm') as 'critical' | 'elevated' | 'watch' | 'calm',
         }))
         .sort((a, b) => b.score - a.score)
-    : demoRows;
+    : [];
 
   // Headline figures, from live state when there is any.
   const topScore = zoneRows.length ? Math.max(...zoneRows.map((z) => z.score)) : 0;
@@ -84,7 +78,7 @@ export function AdminDashboardScreen({
           0,
         ),
       ).toLocaleString()
-    : '4,400';
+    : '—';
 
   const criticalCount = zoneRows.filter((z) => z.level === 'critical').length;
 
@@ -155,14 +149,12 @@ export function AdminDashboardScreen({
               } API calls`
             : `${roleLabel} · demo data (backend offline)`
         }
-        unread={3}
+        unread={0}
         onSettings={() => setSettingsOpen(true)}
       />
 
       <Box flex={1}>
         <CityMap
-          markers={markers}
-          blobs={blobs}
           districts={districtOverlays}
           zones={zoneOverlays}
           clusters={clusters}
@@ -254,7 +246,7 @@ export function AdminDashboardScreen({
                       ? criticalCount > 0
                         ? `${criticalCount} critical`
                         : 'all clear'
-                      : '1 critical'
+                      : 'no data'
                   }
                 />
                 <Text size="xl" color={textMuted}>{railOpen ? '⌄' : '⌃'}</Text>
@@ -266,16 +258,16 @@ export function AdminDashboardScreen({
             <>
               <HStack borderTopWidth={1} borderBottomWidth={1} borderColor={borderColor} py="$4" space="md">
                 <Metric
-                  value={state ? String(topScore) : '78'}
+                  value={state ? String(topScore) : '—'}
                   label="Highest severity"
                   tint={topScore >= 75 ? '#ff4444' : accentColor}
                 />
                 <Metric
-                  value={state ? peopleWatched : '4,400'}
+                  value={peopleWatched}
                   label="People estimated"
                 />
                 <Metric
-                  value={state ? String(state.monitored.panel) : '12'}
+                  value={state ? String(state.monitored.panel) : '—'}
                   label="Panel devices"
                   tint="#33b5e5"
                 />

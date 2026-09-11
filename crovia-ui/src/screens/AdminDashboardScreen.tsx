@@ -7,11 +7,7 @@ import { LatLon } from '../geo';
 import { CityMap } from '../components/CityMap';
 import { StatusChip } from '../components/StatusChip';
 import { MotionButton } from '../components/MotionButton';
-import {
-  blobs,
-  markers,
-  REGION,
-} from '../data';
+import { REGION } from '../data';
 import { createOperatorZone, toOverlays } from '../api';
 import { useLiveState } from '../useLiveState';
 import { districts, zoneById } from '../geo';
@@ -281,7 +277,7 @@ export function AdminDashboardScreen({
                 {zoneRows.map((z) => {
                   const lc = levelColors[z.level];
                   return (
-                    <Pressable key={z.id} accessibilityRole="button">
+                    <Box key={z.id}>
                       <HStack
                         alignItems="center"
                         borderWidth={1}
@@ -300,7 +296,7 @@ export function AdminDashboardScreen({
                         </VStack>
                         <StatusChip level={z.level} />
                       </HStack>
-                    </Pressable>
+                    </Box>
                   );
                 })}
               </ScrollView>

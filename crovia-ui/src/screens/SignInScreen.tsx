@@ -162,12 +162,6 @@ export function SignInScreen({
                   </Box>
                 ) : null}
 
-                <Pressable alignSelf="flex-end">
-                  <Text size="sm" color={accentColor} fontWeight="$bold">
-                    Forgot password?
-                  </Text>
-                </Pressable>
-
                 <MotionButton
                   label={busy ? 'Signing in…' : 'Sign in'}
                   color={accentColor}

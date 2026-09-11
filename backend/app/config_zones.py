@@ -1,1 +1,0 @@
-# to decide the zones and assign it to each tower based on the smart city to be chosen

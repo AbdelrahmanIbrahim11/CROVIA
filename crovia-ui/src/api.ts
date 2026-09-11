@@ -177,7 +177,8 @@ export type NearbyState = {
   districts: Record<string, string>;
   alerts: { zone_id: string; segment_label: string; reason: string; t: number }[];
   my_warnings: Warning[];
-  monitored: boolean;
+  /** Whether CROVIA is watching for the person signed in. */
+  you_are_monitored: boolean;
 };
 
 export async function fetchNearby(signal?: AbortSignal): Promise<NearbyState | null> {

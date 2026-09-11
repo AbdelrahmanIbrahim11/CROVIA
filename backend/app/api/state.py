@@ -270,7 +270,12 @@ def get_nearby(db: Session = Depends(getdb), user: dict = Depends(current_user))
                     "reason": a["reason"], "t": a["t"]}
                    for a in engine.alerts[-3:]],
         "my_warnings": mine,
-        "monitored": bool(phone),
+        # Named apart from /api/state's "monitored", which is the operations
+        # count of sentinels and panel devices. Here it means one thing about
+        # one person: is CROVIA watching for YOU. Two endpoints using the same
+        # word for different things is how a citizen screen ends up showing an
+        # operations figure by accident.
+        "you_are_monitored": bool(phone),
     }
 
 

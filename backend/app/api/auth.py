@@ -25,6 +25,7 @@ from __future__ import annotations
 
 import hmac
 import logging
+import re
 import os
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
@@ -112,9 +113,22 @@ def register(body: RegisterIn, db: Session = Depends(getdb)):
     if len(body.password) < 8:
         raise HTTPException(status_code=422,
                             detail="password must be at least 8 characters")
-    if body.user_type == "normal" and not body.number:
-        raise HTTPException(status_code=422,
-                            detail="a citizen account needs a phone number")
+    if body.user_type == "normal":
+        if not body.number:
+            raise HTTPException(status_code=422,
+                                detail="a citizen account needs a phone number")
+        # Checked HERE, before anything is written.
+        #
+        # The consent table validates the same rule, but it did so after the
+        # account row had already been created and committed. A short number
+        # therefore produced an account with no consent attached, a 500 rather
+        # than a readable message, and a person who could not sign up again
+        # because their email was "already registered".
+        if not re.fullmatch(r"^\+?[0-9]{5,15}$", body.number.replace(" ", "")):
+            raise HTTPException(
+                status_code=422,
+                detail="phone number must be 5 to 15 digits, and may start "
+                       "with + and the country code - for example +97430001234")
     if dbServices.signin_existing_mail(db=db, email=body.email):
         raise HTTPException(status_code=400, detail="that email is already registered")
 
@@ -133,6 +147,7 @@ def register(body: RegisterIn, db: Session = Depends(getdb)):
     # they are protected, and nothing is watching them.
     monitored = False
     if body.user_type == "normal" and body.consent and body.number:
+      try:
         enrollment.grant_consent(db, body.number)
         # Consent on its own watches nobody. It records permission; enrolling is
         # what puts the device on the list the engine reads at startup. Doing
@@ -145,6 +160,12 @@ def register(body: RegisterIn, db: Session = Depends(getdb)):
         # deliberately where an event is expected.
         enrollment.enrol(db, body.number, enrollment.PANEL)
         monitored = True
+      except Exception as exc:
+        # The account exists and is usable; only the monitoring failed. Saying
+        # so is better than a 500 that leaves the person unable to sign up
+        # again because their email is taken by an account they never got.
+        db.rollback()
+        logger.warning("account created but monitoring could not start: %s", exc)
 
     logger.info("registered a %s account (monitored=%s)", body.user_type, monitored)
     return {"username": str(user.username), "email": str(user.email),

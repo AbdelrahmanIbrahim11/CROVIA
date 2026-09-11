@@ -59,6 +59,23 @@ export function authHeader(): Record<string, string> {
   return s ? { Authorization: `Bearer ${s.token}` } : {};
 }
 
+/**
+ * Turn whatever the server said into one sentence a person can read.
+ *
+ * FastAPI answers a failed field check with `detail` as a LIST of objects, not
+ * a string. Handing that straight to a Text component renders an object and
+ * crashes the screen, so the first message is pulled out instead.
+ */
+function readError(body: unknown, fallback: string): string {
+  const detail = (body as { detail?: unknown })?.detail;
+  if (typeof detail === 'string') return detail;
+  if (Array.isArray(detail)) {
+    const first = detail[0] as { msg?: string } | undefined;
+    if (first?.msg) return first.msg;
+  }
+  return fallback;
+}
+
 type LoginResult =
   | { ok: true; session: Session }
   | { ok: false; error: string };
@@ -76,7 +93,7 @@ export async function signIn(
     });
     const body = await r.json();
     if (!r.ok) {
-      return { ok: false, error: body?.detail ?? 'Could not sign in.' };
+      return { ok: false, error: readError(body, 'Could not sign in.') };
     }
     const session: Session = {
       token: body.access_token,
@@ -116,7 +133,7 @@ export async function register(input: {
     });
     if (!r.ok) {
       const body = await r.json().catch(() => ({}));
-      return { ok: false, error: body?.detail ?? 'Could not create the account.' };
+      return { ok: false, error: readError(body, 'Could not create the account.') };
     }
     return { ok: true };
   } catch {

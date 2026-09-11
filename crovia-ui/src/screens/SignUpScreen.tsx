@@ -40,6 +40,12 @@ export function SignUpScreen({
       setError('Your password needs at least 8 characters.');
       return;
     }
+    // Checked here as well as on the server, so a wrong number is answered
+    // instantly instead of after a round trip.
+    if (!/^\+?[0-9]{5,15}$/.test(number.replace(/\s+/g, ''))) {
+      setError('Enter a phone number of 5 to 15 digits, with the country code — for example +974 3000 0000.');
+      return;
+    }
     setBusy(true);
     const res = await register({
       username: name.trim(),
@@ -121,7 +127,8 @@ export function SignUpScreen({
                       keyboardType="phone-pad" color={textPrimary} placeholderTextColor="#6B7280" />
                   </Input>
                   <Text size="xs" color={textMuted}>
-                    This is the number CROVIA warns. It is stored as a one-way code, never as a number.
+                    Include the country code, for example +974 3000 0000. This is the
+                    number CROVIA warns. It is stored as a one-way code, never as a number.
                   </Text>
                 </VStack>
 

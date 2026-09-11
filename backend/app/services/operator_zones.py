@@ -54,6 +54,15 @@ def create(db: Session, city: City, engine, *, label: str, district_id: str,
     The city model validates first, so an invalid zone never reaches the
     database and the two can never disagree about what exists.
     """
+    label = (label or "").strip()
+    if not label:
+        raise ValueError("the place needs a name")
+    # The column holds 120. Checked here so a long name is a readable refusal
+    # rather than a 500 from the database, which is what a person typing a
+    # description instead of a name would otherwise get.
+    if len(label) > 120:
+        raise ValueError("the name must be 120 characters or fewer")
+
     zone_id = zone_id_for(label)
     if zone_id in city.zones:
         raise ValueError(f"a zone called {label!r} already exists")

@@ -113,6 +113,25 @@ def register(body: RegisterIn, db: Session = Depends(getdb)):
     if len(body.password) < 8:
         raise HTTPException(status_code=422,
                             detail="password must be at least 8 characters")
+    # Checked against what the columns can actually hold.
+    #
+    # Without this a long name reached the database, the insert failed on the
+    # column width, and the person got a 500 with no idea which field was the
+    # problem. The limits below are the column widths, so the message can name
+    # the field instead of the server falling over.
+    if not body.username.strip():
+        raise HTTPException(status_code=422, detail="please enter your name")
+    if len(body.username) > 80:
+        raise HTTPException(status_code=422,
+                            detail="name must be 80 characters or fewer")
+    if len(body.email) > 120:
+        raise HTTPException(status_code=422,
+                            detail="email must be 120 characters or fewer")
+    if len(body.password) > 200:
+        # bcrypt itself ignores anything past 72 bytes, so a longer password is
+        # not more secure - it just cannot be stored.
+        raise HTTPException(status_code=422,
+                            detail="password must be 200 characters or fewer")
     if body.user_type == "normal":
         if not body.number:
             raise HTTPException(status_code=422,

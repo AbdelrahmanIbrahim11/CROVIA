@@ -44,6 +44,18 @@ else:
     driver_name = _getenv("DRIVERNAME", "sqlite")
 
     if driver_name.startswith("sqlite"):
+        # A deployment must never land here.
+        #
+        # A hosted container's disk is wiped on every restart, and these
+        # services restart often - a deploy, a crash, or simply waking from
+        # sleep. SQLite there means every account silently disappears, and the
+        # only symptom is people being unable to sign in to an account they
+        # made yesterday. Refusing is better than losing their data quietly.
+        if ENV("CROVIA_ENV", "local").lower() != "local":
+            raise RuntimeError(
+                "DATABASE_URL must be set when CROVIA_ENV is not 'local'. "
+                "A hosted disk is erased on restart, so SQLite would lose "
+                "every account without warning.")
         # A file beside the backend, so data survives a restart.
         db_path = _getenv("DATABASE", "crovia.db")
         SQL_ALCHEMY_URL = URL.create(drivername="sqlite", database=db_path)
@@ -85,3 +97,32 @@ def getdb():
 
 def create_table():
     base.metadata.create_all(bind=engine)
+
+
+def drop_username_uniqueness() -> None:
+    """
+    Let two people share a name.
+
+    The username column was created UNIQUE, which meant the second Ahmed to
+    sign up got a 500 - an IntegrityError on a column nobody thinks of as an
+    identifier. A display name is not an identifier; the email is, and that is
+    unique already.
+
+    create_all() only creates missing tables, so an existing database keeps the
+    old constraint until it is dropped here. Written to be safe to run every
+    startup and on either database: nothing happens if the constraint is
+    already gone, and SQLite has no such constraint to drop.
+    """
+    from sqlalchemy import inspect, text
+
+    if driver_name.startswith("sqlite"):
+        return
+    insp = inspect(engine)
+    with engine.begin() as conn:
+        for table in ("normal_users", "admin_users", "authority_users"):
+            if table not in insp.get_table_names():
+                continue
+            for uc in insp.get_unique_constraints(table):
+                if uc.get("column_names") == ["username"] and uc.get("name"):
+                    conn.execute(text(
+                        f'ALTER TABLE {table} DROP CONSTRAINT "{uc["name"]}"'))

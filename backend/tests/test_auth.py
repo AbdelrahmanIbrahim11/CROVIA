@@ -185,6 +185,20 @@ def test_a_wrong_invite_code_is_refused():
     assert r.status_code == 403
 
 
+def test_a_field_longer_than_its_column_is_refused_not_crashed():
+    """
+    A 200-character name used to reach the database, fail on the column width,
+    and come back as a 500 that named no field. Found by testing the deployed
+    service with the kind of input a real person produces.
+    """
+    _, r = _register("normal", username="x" * 200)
+    assert r.status_code == 422, f"got {r.status_code}, expected a readable refusal"
+    assert "80" in r.json()["detail"], "the message should say what the limit is"
+
+    _, r = _register("normal", username="   ")
+    assert r.status_code == 422, "a blank name should be refused"
+
+
 def test_anyone_may_make_a_citizen_account():
     """Citizen sign-up stays open. That is the product."""
     _, r = _register("normal")

@@ -173,6 +173,16 @@ class Engine:
         self.ledger: Ledger = client.ledger
         self.districts = {d: DistrictState(d) for d in city.districts}
         self.zones = {z.id: ZoneState(z.id, z.district_id) for z in city.zones.values()}
+        # Bounded on purpose.
+        #
+        # These are the live view, not the record: alarms are written to the
+        # incidents table and warnings to alert_deliveries, both of which
+        # survive a restart. Keeping every trace line for ever is how a service
+        # that is never restarted slowly fills its memory - and on a 512 MB
+        # instance that is a crash, days later, with no obvious cause.
+        #
+        # The API only ever returns the last few of each, so nothing is lost
+        # that anybody reads.
         self.trace: list[dict] = []
         self.alerts: list[dict] = []
         self.now = 0.0
@@ -222,6 +232,8 @@ class Engine:
             hazard = self.city.bottleneck_of(ev.zone_id)
             width = hazard.width_m if hazard else 0.0
             if inflow > capacity:
+                if len(self.predictions) > self.MAX_PREDICTIONS:
+                    del self.predictions[:-self.MAX_PREDICTIONS]
                 self.predictions.append({
                     "t": self.now, "zone_id": ev.zone_id, "predicted": True,
                     "expected_inflow_per_min": round(inflow),
@@ -244,8 +256,16 @@ class Engine:
                          zone=ev.zone_id)
         return live
 
+    # How much of each to keep in memory. Generous next to what is read, small
+    # next to what would accumulate over a week.
+    MAX_TRACE = 500
+    MAX_ALERTS = 200
+    MAX_PREDICTIONS = 50
+
     def log(self, kind: str, msg: str, **extra) -> None:
         self.trace.append({"t": self.now, "kind": kind, "msg": msg, **extra})
+        if len(self.trace) > self.MAX_TRACE:
+            del self.trace[:-self.MAX_TRACE]
 
     # ---- free evidence -------------------------------------------------
 
@@ -551,6 +571,8 @@ class Engine:
                     zs.alerted = True
                     record = {"t": self.now, **v.to_dict()}
                     self.alerts.append(record)
+                    if len(self.alerts) > self.MAX_ALERTS:
+                        del self.alerts[:-self.MAX_ALERTS]
                     self.log("alert", f"{v.hazard_label}: {v.reason}", **v.to_dict())
                     self._notify(self.on_alert_raised, record)
                 ds.state = ALERT

@@ -9,7 +9,7 @@ import re
 class normal_user(base):
     __tablename__ = "normal_users"
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    username = Column(String(80), nullable=False, unique=True)
+    username = Column(String(80), nullable=False)
     password = Column(String(255), nullable=False)
     email = Column(String(120), nullable=False)
     number = Column(String(30), nullable=False)
@@ -26,7 +26,7 @@ class normal_user(base):
 class admin_user(base):
     __tablename__ = "admin_users"
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    username = Column(String(80), nullable=False, unique=True)
+    username = Column(String(80), nullable=False)
     password = Column(String(255), nullable=False)
     email = Column(String(120), nullable=False)
 
@@ -42,7 +42,7 @@ class admin_user(base):
 class authority_user(base):
     __tablename__ = "authority_users"
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    username = Column(String(80), nullable=False, unique=True)
+    username = Column(String(80), nullable=False)
     password = Column(String(255), nullable=False)
     email = Column(String(120), nullable=False)
 

@@ -27,7 +27,7 @@ from app.db.redis import close_redis, get_redis
 from app.runtime import engine_now, get_engine, step_twin
 from app.services import (enrollment, incidents, operator_zones, priority,
                           warnings)
-from app.usersDB.db import create_table, getdb
+from app.usersDB.db import create_table, drop_username_uniqueness, getdb
 
 logging.basicConfig(
     level=logging.INFO,
@@ -74,6 +74,10 @@ async def lifespan(app: FastAPI):
     logger.info("creating database tables")
     try:
         create_table()
+        # Existing databases keep constraints that create_table() will not
+        # change, and this one turned a second person with the same name into
+        # a 500.
+        drop_username_uniqueness()
     except Exception as exc:
         logger.error("database unavailable: %s", exc)
 

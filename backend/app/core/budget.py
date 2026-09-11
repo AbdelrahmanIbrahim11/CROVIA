@@ -29,6 +29,10 @@ TIER_DELETE = "subscription_delete"
 TIER_VERIFY = "location_verification"
 TIER_REACHABILITY = "reachability"
 TIER_RETRIEVE = "location_retrieval"
+# A priority session is billed for as long as it lives, not per call, so it is
+# counted once when opened. The weight is high because a session held for an
+# hour is not comparable to a single question about one device.
+TIER_QOD = "priority_session"
 
 # Relative expense. Verification is cheap because it needs no subscription and
 # returns no coordinates; retrieval is the expensive one.
@@ -39,6 +43,7 @@ TIER_WEIGHT = {
     TIER_VERIFY: 1.0,
     TIER_REACHABILITY: 0.5,
     TIER_RETRIEVE: 3.0,
+    TIER_QOD: 5.0,
 }
 
 

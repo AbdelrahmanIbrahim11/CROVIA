@@ -18,7 +18,8 @@ from app.core.city import city
 from app import runtime
 from app.runtime import get_engine
 from app.ai import graph as ai
-from app.services import enrollment, incidents, operator_zones, push, warnings
+from app.services import (enrollment, incidents, operator_zones, priority, push,
+                          warnings)
 from app.usersDB.db import getdb
 
 router = APIRouter(prefix="/api", tags=["state"])
@@ -323,6 +324,20 @@ def push_coverage(db: Session = Depends(getdb),
     means something different when only 12 of them have the app installed.
     """
     return push.coverage(db)
+
+
+@router.get("/priority/active")
+def active_priority(db: Session = Depends(getdb),
+                    _: dict = Depends(require_operator)):
+    """
+    Who currently holds a protected connection.
+
+    Worth showing next to an incident: a responder whose session reads
+    REQUESTED does not have priority yet, and one that reads NETWORK_TERMINATED
+    has had it taken away. Assuming it worked because we asked is how a team
+    finds out at the wrong moment.
+    """
+    return {"sessions": priority.active(db), "enabled": priority.enabled()}
 
 
 @router.get("/warnings/me")

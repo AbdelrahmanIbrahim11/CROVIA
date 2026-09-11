@@ -56,6 +56,13 @@ def open_incident(db: Session, record: dict) -> incident:
     return row
 
 
+def open_row_for(db: Session, zone_id: str):
+    """The incident still open in this zone, if there is one."""
+    return (db.query(incident)
+              .filter(incident.zone_id == zone_id, incident.ended_at.is_(None))
+              .one_or_none())
+
+
 def close_incident(db: Session, zone_id: str) -> bool:
     """Mark the open incident in this zone as finished. Safe to call twice."""
     row = (db.query(incident)

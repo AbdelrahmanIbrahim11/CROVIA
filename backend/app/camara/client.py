@@ -24,11 +24,12 @@ Two implementations behind one interface:
 from __future__ import annotations
 
 import datetime as dt
+import time
 from dataclasses import dataclass
 from typing import Protocol
 
 from app.core.budget import (
-    TIER_CONGESTION_SUB, TIER_DELETE, TIER_GEOFENCE_SUB,
+    TIER_CONGESTION_SUB, TIER_DELETE, TIER_GEOFENCE_SUB, TIER_QOD,
     TIER_REACHABILITY, TIER_RETRIEVE, TIER_VERIFY, Ledger,
 )
 
@@ -76,6 +77,10 @@ class CamaraClient(Protocol):
                                      sink: str, expire_s: int,
                                      initial_event: bool = True) -> tuple[str, dict | None]: ...
     def delete_subscription(self, sub_id: str) -> None: ...
+    def create_qod_session(self, phone: str, server_ip: str, profile: str,
+                           duration_s: int, sink: str | None = None) -> dict: ...
+    def delete_qod_session(self, session_id: str) -> None: ...
+    def extend_qod_session(self, session_id: str, extra_s: int) -> dict: ...
 
 
 class SimulatorClient:
@@ -91,6 +96,7 @@ class SimulatorClient:
         self.ledger = ledger or Ledger()
         self._seq = 0
         self.subs: dict[str, dict] = {}
+        self.qod_sessions: dict[str, dict] = {}
 
     def _meter(self, tier: str, phone: str, district: str | None = None) -> None:
         self.ledger.record(tier, district)
@@ -143,6 +149,39 @@ class SimulatorClient:
     def delete_subscription(self, sub_id: str) -> None:
         self.ledger.record(TIER_DELETE)
         self.subs.pop(sub_id, None)
+
+    # ---- Quality on Demand ------------------------------------------------
+
+    def create_qod_session(self, phone: str, server_ip: str, profile: str,
+                           duration_s: int, sink: str | None = None) -> dict:
+        """
+        A priority session, without a network to prioritise.
+
+        The shape is the real one, including the two-step status: a real network
+        answers REQUESTED and only becomes AVAILABLE once it has actually
+        allocated resources. Returning AVAILABLE straight away would let code be
+        written that never handles the wait, and that code would fail the first
+        time it met a real network.
+        """
+        self.ledger.record(TIER_QOD)
+        sid = f"sim-qod-{self._seq}"
+        self._seq += 1
+        self.qod_sessions[sid] = {
+            "phone": phone, "profile": profile,
+            "expires_at": time.time() + duration_s,
+        }
+        return {"session_id": sid, "status": "REQUESTED",
+                "status_info": None, "expires_at": None}
+
+    def delete_qod_session(self, session_id: str) -> None:
+        self.ledger.record(TIER_DELETE)
+        self.qod_sessions.pop(session_id, None)
+
+    def extend_qod_session(self, session_id: str, extra_s: int) -> dict:
+        row = self.qod_sessions.get(session_id)
+        if row is not None:
+            row["expires_at"] += extra_s
+        return {"session_id": session_id, "status": "AVAILABLE", "expires_at": None}
 
 
 class NokiaClient:
@@ -281,3 +320,57 @@ class NokiaClient:
             self._nac.geofencing.delete_subscription(sub_id)
         except Exception:
             self._nac.congestion_insights.delete_subscription(resource_id=sub_id)
+
+    # ---- Quality on Demand ------------------------------------------------
+
+    def create_qod_session(self, phone: str, server_ip: str, profile: str,
+                           duration_s: int, sink: str | None = None) -> dict:
+        """
+        Ask the network to protect one device's connection to our backend.
+
+        QoD prioritises the path between a device and ONE named server, which is
+        why the server address is required rather than optional. It protects a
+        responder's route to CROVIA; it does nothing for their phone calls.
+
+        Returns immediately with status REQUESTED. The network decides
+        afterwards whether it can honour the request, and says so either through
+        the notification sink or through a later read of the session.
+        """
+        self.ledger.record(TIER_QOD)
+        kwargs: dict = {
+            "device": {"phone_number": phone},
+            "application_server": {"ipv_4_address": server_ip},
+            "qos_profile": profile,
+            "duration": duration_s,
+        }
+        if sink:
+            expires = dt.datetime.now(dt.timezone.utc) + dt.timedelta(seconds=duration_s)
+            kwargs["sink"] = sink
+            # camelCase, for the same reason as geofencing: the SDK converts
+            # only the fields it declares and passes the rest through as given.
+            kwargs["sink_credential"] = {
+                "credentialType": "ACCESSTOKEN",
+                "accessToken": self.webhook_token,
+                "accessTokenType": "bearer",
+                "accessTokenExpiresUtc": expires.isoformat(),
+            }
+        r = self._nac.qod.create_session_v1(**kwargs)
+        return {
+            "session_id": r.session_id,
+            "status": getattr(r, "qos_status", None),
+            "status_info": getattr(r, "status_info", None),
+            "expires_at": str(getattr(r, "expires_at", "")) or None,
+        }
+
+    def delete_qod_session(self, session_id: str) -> None:
+        """End a session. Sessions are billed while they live, so this matters."""
+        self.ledger.record(TIER_DELETE)
+        self._nac.qod.delete_session_v1(session_id)
+
+    def extend_qod_session(self, session_id: str, extra_s: int) -> dict:
+        """Lengthen a live session without interrupting it."""
+        r = self._nac.qod.extend_session_v1(session_id,
+                                            requested_additional_duration=extra_s)
+        return {"session_id": session_id,
+                "status": getattr(r, "qos_status", None),
+                "expires_at": str(getattr(r, "expires_at", "")) or None}

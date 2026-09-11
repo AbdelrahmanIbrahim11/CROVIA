@@ -16,6 +16,8 @@ from pydantic import ValidationError
 
 from app.config import settings
 from app.runtime import get_engine
+from app.services import priority
+from app.usersDB.db import getdb
 from app.schemas.camara import CongestionNotification, GeofencingNotification
 
 logger = logging.getLogger("crovia.webhooks")
@@ -119,4 +121,36 @@ async def geofencing(request: Request, device_key: str | None = None,
         engine.on_subscription_end(notification.data.subscriptionId)
     else:
         engine.on_geofence(notification.data.subscriptionId, event)
+    return {"status": "ok"}
+
+
+@router.post("/webhooks/qod")
+async def qod_status(request: Request,
+                     authorization: str | None = Header(default=None)):
+    """
+    The network telling us what happened to a priority session.
+
+    A session starts REQUESTED and becomes AVAILABLE only once resources are
+    actually allocated. The network can also take it back on its own, which
+    arrives here as UNAVAILABLE with NETWORK_TERMINATED - and that is the only
+    way to find out. A system that assumes priority is active because it asked
+    for it will be wrong at some point, during an incident.
+    """
+    _check_token(authorization)
+    body = await request.json()
+    data = body.get("data") or {}
+    session_id = data.get("sessionId")
+    if not session_id:
+        logger.warning("qod notification with no session id: %s", body)
+        return {"status": "ignored"}
+
+    db = next(getdb())
+    try:
+        known = priority.on_status_change(db, session_id,
+                                          data.get("qosStatus", "UNKNOWN"),
+                                          data.get("statusInfo"))
+    finally:
+        db.close()
+    if not known:
+        logger.info("qod notification for a session we do not know: %s", session_id)
     return {"status": "ok"}

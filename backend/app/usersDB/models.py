@@ -256,3 +256,32 @@ class push_token(base):
     # Set when the push service says the address is dead, so it is not tried
     # again and the operator can see coverage honestly.
     invalid_reason = Column(String(200), nullable=True)
+
+
+class priority_session(base):
+    """
+    A network priority session opened for a responder during an incident.
+
+    Recorded for the same reason subscriptions are: a session is billed for as
+    long as it lives, and a restart that forgets the session ids leaves them
+    running at the operator with nothing able to close them.
+
+    Tied to the incident rather than to a person, because that is what decides
+    when it ends. The incident closing is the signal to hand the priority back.
+    """
+
+    __tablename__ = "priority_sessions"
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    session_id = Column(String(120), nullable=False, unique=True, index=True)
+    incident_id = Column(UUID(as_uuid=True), ForeignKey("incidents.id"), nullable=True)
+    zone_id = Column(String(60), nullable=True)
+    # The responder's device. Not a citizen's, so it is kept as given rather
+    # than hashed: this is a work phone acting in an official role, and an
+    # operator needs to see which responder holds priority.
+    device = Column(String(60), nullable=False)
+    profile = Column(String(30), nullable=False)
+    status = Column(String(20), nullable=False, default="REQUESTED")
+    status_info = Column(String(60), nullable=True)
+    opened_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+    closed_at = Column(DateTime(timezone=True), nullable=True)
+    error = Column(String(200), nullable=True)

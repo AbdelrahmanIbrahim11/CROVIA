@@ -27,7 +27,7 @@ import numpy as np
 
 from app.camara.client import Area, ApiError
 from app.core.budget import (
-    TIER_CONGESTION_SUB, TIER_DELETE, TIER_GEOFENCE_SUB,
+    TIER_CONGESTION_SUB, TIER_DELETE, TIER_GEOFENCE_SUB, TIER_QOD,
     TIER_REACHABILITY, TIER_RETRIEVE, TIER_VERIFY, Ledger,
 )
 
@@ -41,6 +41,7 @@ class TwinCamaraClient:
         self.city = twin.city
         self.rng = np.random.default_rng(seed)
         self.ledger = Ledger()
+        self.qod_sessions: dict[str, dict] = {}
         self.unknown_prob = unknown_prob
         self.transient_error_prob = transient_error_prob
         self.rate_limit = rate_limit_per_min or {TIER_RETRIEVE: 120, TIER_VERIFY: 300}
@@ -174,6 +175,32 @@ class TwinCamaraClient:
     def delete_subscription(self, sub_id: str) -> None:
         self.ledger.record(TIER_DELETE)
         self.subs.pop(sub_id, None)
+
+    # ---- Quality on Demand ------------------------------------------------
+
+    def create_qod_session(self, phone: str, server_ip: str, profile: str,
+                           duration_s: int, sink: str | None = None) -> dict:
+        """
+        A priority session inside the simulated city.
+
+        The twin has no congestion to relieve, so this changes nothing about
+        how the simulation behaves. It exists so the dispatch path - open on
+        alarm, close on stand-down, survive a restart - can be exercised end to
+        end without a Nokia key, which is where the mistakes actually are.
+        """
+        self.ledger.record(TIER_QOD)
+        sid = f"twin-qod-{len(self.qod_sessions)}"
+        self.qod_sessions[sid] = {"phone": phone, "profile": profile}
+        return {"session_id": sid, "status": "REQUESTED",
+                "status_info": None, "expires_at": None}
+
+    def delete_qod_session(self, session_id: str) -> None:
+        self.ledger.record(TIER_DELETE)
+        self.qod_sessions.pop(session_id, None)
+
+    def extend_qod_session(self, session_id: str, extra_s: int) -> dict:
+        return {"session_id": session_id, "status": "AVAILABLE", "expires_at": None}
+
 
     # ---- pushed notifications ------------------------------------------
 

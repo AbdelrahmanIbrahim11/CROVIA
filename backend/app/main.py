@@ -25,7 +25,8 @@ from app.api.webhooks import router as webhook_router
 from app.core.city import city
 from app.db.redis import close_redis, get_redis
 from app.runtime import engine_now, get_engine, step_twin
-from app.services import enrollment, incidents, operator_zones, warnings
+from app.services import (enrollment, incidents, operator_zones, priority,
+                          warnings)
 from app.usersDB.db import create_table, getdb
 
 logging.basicConfig(
@@ -115,6 +116,19 @@ async def lifespan(app: FastAPI):
             # log and nobody warned.
             result = warnings.warn_people_near(db, engine.registry, record,
                                                incident_id=row.id)
+            # Give the responders a connection that works.
+            #
+            # Done on the alarm rather than when somebody acknowledges it,
+            # because acknowledging is itself an action taken in the app -
+            # waiting for it would protect the connection only after it was
+            # already needed.
+            prio = priority.dispatch(db, engine.client, row.id,
+                                     record.get("zone_id", ""))
+            if prio.get("opened"):
+                engine.log("priority",
+                           f"{prio['opened']} responders given a protected "
+                           f"connection ({prio['profile']})",
+                           zone=record.get("zone_id"), **prio)
             engine.log("warned",
                        f"{result['sent']} people in {result.get('district_id', '?')} "
                        f"were warned about {record.get('segment_label')}",
@@ -125,12 +139,28 @@ async def lifespan(app: FastAPI):
     def _close_alarm(zone_id: str, _t: float) -> None:
         db = next(getdb())
         try:
+            row = incidents.open_row_for(db, zone_id)
             incidents.close_incident(db, zone_id)
+            # Hand the priority back. Sessions are billed while they live, and
+            # an operator will withdraw a priority that never ends.
+            if row is not None:
+                priority.stand_down(db, engine.client, row.id)
         finally:
             db.close()
 
     engine.on_alert_raised = _record_alarm
     engine.on_alert_cleared = _close_alarm
+
+    # A crash during an incident leaves paid priority sessions running with
+    # nothing that remembers their ids.
+    try:
+        db = next(getdb())
+        try:
+            priority.close_orphans(db, engine.client)
+        finally:
+            db.close()
+    except Exception as exc:
+        logger.warning("could not release old priority sessions: %s", exc)
 
     logger.info("city: %s, %d districts, %d zones",
                 city.meta["label"], len(city.districts), len(city.zones))

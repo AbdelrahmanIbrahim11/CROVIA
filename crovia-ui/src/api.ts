@@ -22,7 +22,7 @@ const DEFAULT_BASE = 'http://localhost:8000';
 // Expo replaces EXPO_PUBLIC_* at build time. Declared rather than imported from
 // @types/node, because this runs in a browser and a React Native runtime, not
 // in Node, and pulling Node's globals in would let server-only APIs typecheck.
-declare const process: { env?: Record<string, string | undefined> } | undefined;
+declare const process: { env: Record<string, string | undefined> };
 
 /**
  * Where the backend is.
@@ -36,8 +36,14 @@ declare const process: { env?: Record<string, string | undefined> } | undefined;
  * CROVIA was unreachable when the service was running perfectly.
  */
 function resolveApiBase(): string {
-  const configured =
-    typeof process !== 'undefined' ? process?.env?.EXPO_PUBLIC_API_BASE : undefined;
+  // Written as the exact literal `process.env.EXPO_PUBLIC_API_BASE`.
+  //
+  // Expo replaces that text with the value at build time, and it only
+  // recognises the plain form. Reading it through optional chaining
+  // (process?.env?.X) leaves the expression intact, so the built app looked it
+  // up at runtime in a browser, found no `process` at all, and silently fell
+  // back to guessing the host - which is wrong on any deployment.
+  const configured = process.env.EXPO_PUBLIC_API_BASE;
   if (configured) return configured;
 
   // Web: follow the host the page came from. Native has no window.location,

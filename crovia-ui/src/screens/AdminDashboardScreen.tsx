@@ -157,7 +157,7 @@ export function AdminDashboardScreen({
               } API calls`
             : `${roleLabel} · demo data (backend offline)`
         }
-        unread={3}
+        unread={0}
         onSettings={() => setSettingsOpen(true)}
       />
 

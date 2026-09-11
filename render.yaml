@@ -35,6 +35,12 @@ services:
         sync: false
       - key: WEBHOOK_AUTH_TOKEN
         generateValue: true
+      # Needed to create an operator or authority account. Generated and kept
+      # secret by Render; read it from the dashboard when making the first
+      # operator. Without it those accounts cannot be created at all, which is
+      # the safe default - citizen sign-up stays open either way.
+      - key: STAFF_INVITE_CODE
+        generateValue: true
       # Optional. Without them the system still runs: the twin replaces Nokia,
       # and deterministic rules replace the model.
       - key: NOKIA_NAC_API_KEY

@@ -140,6 +140,32 @@ async function incidentAction(url: string, body: unknown): Promise<Incident | nu
   }
 }
 
+/** What a citizen is allowed to see: severities and their own warnings. */
+export type NearbyState = {
+  t: number;
+  zones: Record<string, {
+    zone_id: string;
+    dangerous: boolean;
+    severity: number;
+    segment_label: string;
+    band_label: string;
+  } | null>;
+  districts: Record<string, string>;
+  alerts: { zone_id: string; segment_label: string; reason: string; t: number }[];
+  my_warnings: Warning[];
+  monitored: boolean;
+};
+
+export async function fetchNearby(signal?: AbortSignal): Promise<NearbyState | null> {
+  try {
+    const r = await fetch(`${API_BASE}/api/nearby`, { signal, headers: authHeader() });
+    if (!r.ok) return null;
+    return (await r.json()) as NearbyState;
+  } catch {
+    return null;
+  }
+}
+
 export type Warning = {
   id: string;
   zone_id: string;

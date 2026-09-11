@@ -176,6 +176,53 @@ def close_incident(incident_id: str, body: IncidentActionIn,
     return row
 
 
+@router.get("/nearby")
+def get_nearby(db: Session = Depends(getdb), user: dict = Depends(current_user)):
+    """
+    What a person in the city is allowed to see.
+
+    The citizen screen used to poll /api/state, which is operations data and is
+    refused to a citizen with 403 - so the screen sat on "offline" forever and
+    showed nothing useful no matter what was happening outside.
+
+    This carries the same picture at the resolution a member of the public
+    needs: which places are busy, and anything addressed to them. It leaves out
+    what is nobody's business - headcounts, API spend, the panel size, the
+    ground truth - so a citizen account cannot be used to survey the city.
+    """
+    engine = get_engine()
+    snap = engine.snapshot()
+
+    zones = {}
+    for zid, v in snap["zones"].items():
+        if not v:
+            zones[zid] = None
+            continue
+        # Severity only, and the name of the hazard. No numbers of people.
+        zones[zid] = {
+            "zone_id": zid,
+            "dangerous": v["dangerous"],
+            "severity": v["severity"],
+            "segment_label": v["segment_label"],
+            "band_label": v["band_label"],
+        }
+
+    phone = phone_of(db, user)
+    mine = warnings.inbox(db, hash_phone(phone), limit=5) if phone else []
+
+    return {
+        "t": snap["t"],
+        "zones": zones,
+        "districts": snap["districts"],
+        # Only what is live now, and only the words - not the headcount.
+        "alerts": [{"zone_id": a["zone_id"], "segment_label": a["segment_label"],
+                    "reason": a["reason"], "t": a["t"]}
+                   for a in engine.alerts[-3:]],
+        "my_warnings": mine,
+        "monitored": bool(phone),
+    }
+
+
 @router.get("/warnings/me")
 def my_warnings(db: Session = Depends(getdb), user: dict = Depends(current_user)):
     """

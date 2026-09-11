@@ -35,7 +35,7 @@ from typing import Callable
 from sqlalchemy.orm import Session
 
 from app.core.city import city
-from app.usersDB.models import alert_delivery, monitored_device
+from app.usersDB.models import alert_delivery, device_consent, monitored_device
 
 logger = logging.getLogger("crovia.warnings")
 
@@ -87,11 +87,29 @@ def warn_people_near(db: Session, registry, record: dict,
     if zone is None:
         return {"sent": 0, "failed": 0, "already_warned": 0}
 
-    recipients = registry.fleet(zone.district_id)
+    # Who gets told, in two groups.
+    #
+    # The first is everyone the network has placed in the affected district.
+    # That is the precise group and it is the one we want.
+    in_district = list(registry.fleet(zone.district_id))
+
+    # The second is everyone who has agreed to be monitored but whose district
+    # is not known yet - somebody who signed up minutes ago and has not
+    # produced a geofence event, so the network has not told us where they are.
+    #
+    # They are warned too. An unknown location is not evidence of safety, and
+    # the message names the place to avoid rather than claiming the person is
+    # near it. Staying silent would mean the people who most recently chose to
+    # be protected are the ones protected least.
+    unplaced = [h for h in _consented_hashes(db)
+                if registry.district_of(h) is None]
+
+    recipients = list(dict.fromkeys(in_district + unplaced))
     if not recipients:
-        logger.warning("alarm in %s but no devices are placed there - nobody to warn",
+        logger.warning("alarm in %s but nobody is enrolled - nobody to warn",
                        zone.district_id)
-        return {"sent": 0, "failed": 0, "already_warned": 0}
+        return {"sent": 0, "failed": 0, "already_warned": 0,
+                "district_id": zone.district_id}
 
     title, body = compose(record)
     transport = _transports.get(channel)
@@ -125,7 +143,15 @@ def warn_people_near(db: Session, registry, record: dict,
     logger.info("warned %d people in %s about %s (%d failed, %d already warned)",
                 sent, zone.district_id, zone_id, failed, len(already))
     return {"sent": sent, "failed": failed, "already_warned": len(already),
-            "district_id": zone.district_id}
+            "district_id": zone.district_id,
+            "in_district": len(in_district), "location_unknown": len(unplaced)}
+
+
+def _consented_hashes(db: Session) -> list[str]:
+    """Everyone who has agreed to be monitored and has not taken it back."""
+    rows = (db.query(device_consent.hashed_id)
+              .filter(device_consent.revoked_at.is_(None)).all())
+    return [r[0] for r in rows]
 
 
 def inbox(db: Session, hashed_id: str, limit: int = 20) -> list[dict]:

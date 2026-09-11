@@ -17,10 +17,10 @@ import { Toast } from '../components/NotificationCard';
 import { StatusChip } from '../components/StatusChip';
 import { MotionButton } from '../components/MotionButton';
 import { blobs, clusters as demoClusters, markers, REGION, REGION_SUB } from '../data';
-import { toOverlays } from '../api';
-import { useLiveState } from '../useLiveState';
-import { Notification } from '../components/NotificationCard';
-import { zoneById } from '../geo';
+import { useNearby } from '../useLiveState';
+import type { Notification } from '../components/NotificationCard';
+import { bottleneckOf, segmentPath, zoneById } from '../geo';
+import type { CrowdCluster, Level } from '../components/CityMap.types';
 
 const bgColor = '#161A28';
 const accentColor = '#F2A93B';
@@ -38,31 +38,30 @@ export function UserDashboardScreen({
   onOpenAlerts: () => void;
   onSignOut: () => void;
 }) {
-  const { state, connection } = useLiveState(5000);
-  const clusters = state ? toOverlays(state).clusters : demoClusters;
-
-  // Everything this screen says about safety is derived here, from live state
-  // only. It previously read "Crowd building 180 m north of you" with a red
-  // badge at all times, including on a completely calm evening — which trains
-  // a person to ignore the one time it is true.
-  const liveAlert = state?.alerts?.[state.alerts.length - 1] ?? null;
+  // A citizen reads /api/nearby, not /api/state. Operations data is refused to
+  // a citizen account, so polling the operator endpoint left this screen stuck
+  // on "offline" no matter what was happening in the city.
+  const { state, connection } = useNearby(5000);
   const live = connection === 'live';
 
-  // The worst zone anywhere in the city, so a person is told something useful
-  // even before a zone crosses into a full alarm.
+  // The newest live alarm, if there is one.
+  const liveAlert = state?.alerts?.length ? state.alerts[state.alerts.length - 1] : null;
+
+  // The busiest place, so a person is told something useful before a zone
+  // crosses into a full alarm.
   const worstZone = state
-    ? Object.entries(state.zones)
-        .filter(([, v]) => v)
-        .sort((a, b) => (b[1]!.severity ?? 0) - (a[1]!.severity ?? 0))[0]
+    ? Object.values(state.zones)
+        .filter((v): v is NonNullable<typeof v> => !!v)
+        .sort((a, b) => (b.severity ?? 0) - (a.severity ?? 0))[0]
     : undefined;
 
   const level: 'calm' | 'watch' | 'elevated' | 'critical' = !live
     ? 'watch'
     : liveAlert
     ? 'critical'
-    : worstZone && worstZone[1]!.severity >= 0.5
+    : worstZone && worstZone.severity >= 0.5
     ? 'elevated'
-    : worstZone && worstZone[1]!.severity >= 0.2
+    : worstZone && worstZone.severity >= 0.2
     ? 'watch'
     : 'calm';
 
@@ -72,23 +71,45 @@ export function UserDashboardScreen({
     ? 'Avoid this area'
     : 'Your area right now';
 
-  // Written so it never claims to know where the person is standing. The
-  // network gives a zone, not a doorway, and saying "180 m north of you" would
-  // claim a precision that does not exist.
+  // Never claims to know where the person is standing. The network resolves to
+  // a zone, not a doorway, so "180 m north of you" would be an invention.
   const detail = !live
     ? 'Showing the map only. Live crowd conditions need the CROVIA service.'
     : liveAlert
-    ? `${liveAlert.segment_label} — about ${Math.round(
-        liveAlert.people_low,
-      ).toLocaleString()}–${Math.round(liveAlert.people_high).toLocaleString()} people, ` +
-      `and more are arriving than can get out.`
-    : worstZone && worstZone[1]!.severity >= 0.2
-    ? `${zoneById[worstZone[0]]?.label ?? 'A crossing'} is getting busy, but people are still moving through.`
+    ? `${liveAlert.segment_label}. More people are arriving than can get out.`
+    : worstZone && worstZone.severity >= 0.2
+    ? `${zoneById[worstZone.zone_id]?.label ?? 'A crossing'} is getting busy, but people are still moving through.`
     : 'No crowd warnings anywhere in Lusail right now.';
 
-  // The banner appears only when there is a real alarm. When the backend is
-  // unreachable it stays hidden rather than falling back to a sample warning:
-  // a crowd banner that is not about a crowd is the failure this screen had.
+  // The red circles on the map, drawn on the failing link rather than the
+  // middle of the zone.
+  const clusters: CrowdCluster[] = state
+    ? (state.alerts
+        .map((a, i) => {
+          const zone = zoneById[a.zone_id];
+          if (!zone) return null;
+          const hazard = bottleneckOf(a.zone_id);
+          const path = hazard ? segmentPath(a.zone_id, hazard) : [];
+          const at = path.length ? path[Math.floor(path.length / 2)] : zone.center;
+          return {
+            id: `alert_${i}_${a.zone_id}`,
+            lat: at.lat,
+            lon: at.lon,
+            accuracy_m: 420,
+            spread_m: hazard ? Math.max(120, hazard.width_m * 20) : 180,
+            level: 4 as Level,
+            label: a.segment_label,
+            sampleCount: 0,
+          };
+        })
+        .filter((c): c is CrowdCluster => c !== null))
+    : demoClusters;
+
+  // Unread warnings addressed to this person, for the bell.
+  const unreadMine = state?.my_warnings?.filter((w) => !w.read).length ?? 0;
+
+  // The banner appears only for a real alarm. Offline shows nothing rather
+  // than a sample warning about a crowd that does not exist.
   const toastItem: Notification | null = liveAlert
     ? {
         id: `alert_${liveAlert.zone_id}`,
@@ -119,7 +140,7 @@ export function UserDashboardScreen({
               : 'Live · no crowd warnings'
             : REGION_SUB
         }
-        unread={unread}
+        unread={unreadMine || unread}
         onBell={onOpenAlerts}
         onSettings={() => setSettingsOpen(true)}
       />
@@ -249,16 +270,6 @@ export function UserDashboardScreen({
         onClose={() => setAlertOpen(false)}
       >
         <Text size="md" color={textMuted} lineHeight="$md">{liveAlert?.reason}</Text>
-        <VStack space="xs" mt="$2">
-          <Text size="sm" color={textPrimary} fontWeight="$bold">
-            {Math.round(liveAlert?.people_low ?? 0).toLocaleString()}–
-            {Math.round(liveAlert?.people_high ?? 0).toLocaleString()} people in this area
-          </Text>
-          <Text size="xs" color={textMuted}>
-            The narrow point is {liveAlert?.width_m ?? 0} m wide and can pass about{' '}
-            {(liveAlert?.capacity_per_min ?? 0).toLocaleString()} people a minute.
-          </Text>
-        </VStack>
         <Text size="sm" color={accentColor} fontWeight="$bold" mt="$2">
           Do not join this crowd. Wait where you are, or leave by another route.
         </Text>

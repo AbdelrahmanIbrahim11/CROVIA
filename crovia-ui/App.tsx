@@ -12,6 +12,7 @@ import { SignInScreen } from './src/screens/SignInScreen';
 import { SignUpScreen } from './src/screens/SignUpScreen';
 import { UserDashboardScreen } from './src/screens/UserDashboardScreen';
 import { ThemeProvider } from './src/theme/ThemeProvider';
+import { ErrorBoundary } from './src/components/ErrorBoundary';
 import {
   Session,
   clearSession,
@@ -115,11 +116,17 @@ function Shell() {
     );
   }
 
-  // We enforce the deep navy color everywhere to match the auth screens
+  // We enforce the deep navy color everywhere to match the auth screens.
+  //
+  // The boundary is keyed on the route so that leaving a screen that crashed
+  // and coming back gives it a fresh attempt, rather than showing the error
+  // for the rest of the session.
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: '#161A28' }}>
       <StatusBar barStyle="light-content" />
-      {body}
+      <ErrorBoundary key={route} label={`the ${route} screen`}>
+        {body}
+      </ErrorBoundary>
     </SafeAreaView>
   );
 }

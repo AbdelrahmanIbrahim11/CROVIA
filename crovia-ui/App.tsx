@@ -57,7 +57,7 @@ function Shell() {
     // Runs once per signed-in session, not on every render.
   }, [session?.token]);
 
-  const unread = notifications.filter((n) => n.unread).length;
+  const unread = 0; // Removed hardcoded demo notifications
 
   const handleSignIn = (s: Session) => {
     setSession(s);

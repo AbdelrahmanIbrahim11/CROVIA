@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { ScrollView, Switch } from 'react-native';
+
 import {
   Box,
   Text,
@@ -7,8 +7,7 @@ import {
   HStack,
   Pressable,
   Center,
-  Input,
-  InputField as GluestackInputField,
+
 } from '@gluestack-ui/themed';
 import { AppHeader, Sheet } from '../components/Chrome';
 import { CityMap } from '../components/CityMap';
@@ -16,7 +15,7 @@ import { MarkerData } from '../components/MapMarker';
 import { Toast } from '../components/NotificationCard';
 import { StatusChip } from '../components/StatusChip';
 import { MotionButton } from '../components/MotionButton';
-import { blobs, clusters as demoClusters, markers, REGION, REGION_SUB } from '../data';
+import { blobs, markers, REGION, REGION_SUB } from '../data';
 import { toOverlays } from '../api';
 import { useLiveState } from '../useLiveState';
 import { Notification } from '../components/NotificationCard';
@@ -39,7 +38,21 @@ export function UserDashboardScreen({
   onSignOut: () => void;
 }) {
   const { state, connection } = useLiveState(5000);
-  const clusters = state ? toOverlays(state).clusters : demoClusters;
+
+  const [selected, setSelected] = useState<MarkerData | null>(null);
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [alertOpen, setAlertOpen] = useState(false);
+  const [toastVisible, setToastVisible] = useState(true);
+
+  if (connection === 'connecting') {
+    return (
+      <Center flex={1} bg={bgColor}>
+        <Text color={textMuted}>Connecting to CROVIA...</Text>
+      </Center>
+    );
+  }
+
+  const clusters = state ? toOverlays(state).clusters : [];
 
   // Everything this screen says about safety is derived here, from live state
   // only. It previously read "Crowd building 180 m north of you" with a red
@@ -67,7 +80,7 @@ export function UserDashboardScreen({
     : 'calm';
 
   const headline = !live
-    ? 'Not connected'
+    ? 'Cannot reach CROVIA'
     : liveAlert
     ? 'Avoid this area'
     : 'Your area right now';
@@ -102,11 +115,7 @@ export function UserDashboardScreen({
       }
     : null;
 
-  const [selected, setSelected] = useState<MarkerData | null>(null);
-  const [zoneOpen, setZoneOpen] = useState(false);
-  const [settingsOpen, setSettingsOpen] = useState(false);
-  const [alertOpen, setAlertOpen] = useState(false);
-  const [toastVisible, setToastVisible] = useState(true);
+
 
   return (
     <VStack flex={1} bg={bgColor}>
@@ -143,7 +152,7 @@ export function UserDashboardScreen({
           <VStack
             position="absolute"
             left="$4"
-            bottom={200}
+            bottom={260}
             bg="rgba(30, 35, 54, 0.9)"
             borderWidth={1}
             borderColor={borderColor}
@@ -164,18 +173,7 @@ export function UserDashboardScreen({
             ))}
           </VStack>
 
-          {/* Zone lookup trigger */}
-          <Pressable
-            onPress={() => setZoneOpen(true)}
-            accessibilityRole="button"
-            position="absolute"
-            right="$4"
-            bottom={200}
-          >
-            <Center w={48} h={48} bg="rgba(30, 35, 54, 0.9)" borderWidth={1} borderColor={borderColor} borderRadius="$lg">
-              <Text size="2xl" color={accentColor}>◎</Text>
-            </Center>
-          </Pressable>
+          {/* Zone lookup trigger removed */}
         </CityMap>
 
         {/* Standing status card */}
@@ -272,78 +270,9 @@ export function UserDashboardScreen({
         />
       </Sheet>
 
-      {/* Zone lookup */}
-      <Sheet visible={zoneOpen} title="Check a specific spot" onClose={() => setZoneOpen(false)}>
-        <Text size="sm" color={textMuted}>
-          Enter a point and a radius to see crowd conditions there before you travel.
-        </Text>
-        <HStack space="md">
-          <VStack space="xs" flex={1}>
-            <Text size="xs" color={textPrimary} fontWeight="$bold">Latitude</Text>
-            <Input variant="outline" size="xl" borderRadius="$lg" borderColor={borderColor} $focus-borderColor={accentColor}>
-              <GluestackInputField placeholder="31.2404" keyboardType="numeric" color={textPrimary} placeholderTextColor="#6B7280" />
-            </Input>
-          </VStack>
-          <VStack space="xs" flex={1}>
-            <Text size="xs" color={textPrimary} fontWeight="$bold">Longitude</Text>
-            <Input variant="outline" size="xl" borderRadius="$lg" borderColor={borderColor} $focus-borderColor={accentColor}>
-              <GluestackInputField placeholder="29.9553" keyboardType="numeric" color={textPrimary} placeholderTextColor="#6B7280" />
-            </Input>
-          </VStack>
-        </HStack>
-        <VStack space="xs">
-          <Text size="xs" color={textPrimary} fontWeight="$bold">Radius in metres</Text>
-          <Input variant="outline" size="xl" borderRadius="$lg" borderColor={borderColor} $focus-borderColor={accentColor}>
-            <GluestackInputField placeholder="500" keyboardType="numeric" color={textPrimary} placeholderTextColor="#6B7280" />
-          </Input>
-        </VStack>
-        
-        <HStack space="md" mt="$2">
-          <MotionButton 
-            label="Check this area"
-            color={accentColor}
-            textColor="#161A28"
-            flex={1}
-            onPress={() => setZoneOpen(false)}
-          />
-          <MotionButton 
-            label="Cancel"
-            variant="outline"
-            color={borderColor}
-            textColor={textPrimary}
-            flex={1}
-            onPress={() => setZoneOpen(false)}
-          />
-        </HStack>
-      </Sheet>
 
       {/* Settings */}
       <Sheet visible={settingsOpen} title="Settings" onClose={() => setSettingsOpen(false)}>
-        <ScrollView style={{ maxHeight: 300 }}>
-          <HStack alignItems="center" py="$4" borderBottomWidth={1} borderBottomColor={borderColor}>
-            <VStack flex={1} pr="$4">
-              <Text size="lg" fontWeight="$bold" color={textPrimary}>Location Services</Text>
-              <Text size="xs" color={textMuted}>Required for live crowd warnings near you</Text>
-            </VStack>
-            <Switch
-              value={true}
-              trackColor={{ true: accentColor, false: '#4B5563' }}
-              thumbColor={textPrimary}
-            />
-          </HStack>
-          <HStack alignItems="center" py="$4" borderBottomWidth={1} borderBottomColor={borderColor}>
-            <VStack flex={1} pr="$4">
-              <Text size="lg" fontWeight="$bold" color={textPrimary}>Push Notifications</Text>
-              <Text size="xs" color={textMuted}>Get alerted instantly</Text>
-            </VStack>
-            <Switch
-              value={true}
-              trackColor={{ true: accentColor, false: '#4B5563' }}
-              thumbColor={textPrimary}
-            />
-          </HStack>
-        </ScrollView>
-
         <MotionButton 
           label="Sign out"
           variant="outline"

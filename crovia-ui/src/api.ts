@@ -220,6 +220,70 @@ export type Warning = {
 };
 
 /** The warnings sent to the person signed in. They cannot ask for anyone else's. */
+/** What a demonstration is doing, so a viewer is never left guessing. */
+export type DemoState = {
+  running: boolean;
+  source?: string;
+  zone?: string;
+  alerts?: number;
+  simulated_seconds?: number;
+  speed?: number;
+  note?: string;
+};
+
+/**
+ * Whether a demonstration is running.
+ *
+ * Polled alongside the live state so the button can say "Stop" rather than
+ * offering to start something that is already going, and so the strip can show
+ * how far through it is.
+ */
+export async function fetchDemoState(signal?: AbortSignal): Promise<DemoState | null> {
+  try {
+    const r = await fetch(`${API_BASE}/api/demo/simulation`, {
+      signal,
+      headers: authHeader(),
+    });
+    if (!r.ok) return null;
+    return (await r.json()) as DemoState;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Start the simulated evening.
+ *
+ * Always starts from the beginning. Someone arriving after the crowd has
+ * dispersed would otherwise be shown a calm city and conclude nothing works.
+ */
+export async function startDemo(): Promise<DemoState | null> {
+  try {
+    const r = await fetch(`${API_BASE}/api/demo/simulation`, {
+      method: 'POST',
+      headers: { ...authHeader(), 'Content-Type': 'application/json' },
+      body: JSON.stringify({ source: 'twin' }),
+    });
+    if (!r.ok) return null;
+    return (await r.json()) as DemoState;
+  } catch {
+    return null;
+  }
+}
+
+/** Stop it, and hand every screen back to the real source. */
+export async function stopDemo(): Promise<boolean> {
+  try {
+    const r = await fetch(`${API_BASE}/api/demo/simulation`, {
+      method: 'DELETE',
+      headers: authHeader(),
+    });
+    return r.ok;
+  } catch {
+    return false;
+  }
+}
+
 export async function fetchMyWarnings(): Promise<Warning[]> {
   try {
     const r = await fetch(`${API_BASE}/api/warnings/me`, { headers: authHeader() });

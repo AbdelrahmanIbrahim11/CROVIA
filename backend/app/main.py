@@ -23,6 +23,7 @@ from app.api.auth import router as auth_router
 from app.api.demo import router as demo_router
 from app.api.state import router as state_router
 from app.api.webhooks import router as webhook_router
+from app.ai import graph as ai
 from app.core.city import city
 from app.db.redis import close_redis, get_redis
 from app import runtime
@@ -62,9 +63,24 @@ async def _engine_loop() -> None:
     # world moves in ordinary-sized steps and the engine runs after each one;
     # only the wall-clock wait between them is shortened.
     step_s = float(os.getenv("ENGINE_STEP_SECONDS", "30"))
+
+    # How often the AI layer gets a turn, in loop cycles.
+    #
+    # Every cycle would mean a model call every thirty seconds for a city that
+    # is calm almost all the time - slow, and paid for nothing. Every fourth is
+    # about two minutes, which is inside the window a crowd takes to build and
+    # well within the cadence congestion notifications arrive on.
+    #
+    # It runs in the live loop rather than only on /api/agent/step because a
+    # demonstration that never invokes the model is not a demonstration of the
+    # model. Anyone watching the twin should be watching the whole system.
+    agent_every = int(os.getenv("AGENT_EVERY_CYCLES", "4"))
+    cycle = 0
+
     while True:
         try:
             engine = get_engine()
+            cycle += 1
             now = engine_now()
             if now is None:
                 engine.tick()
@@ -73,9 +89,37 @@ async def _engine_loop() -> None:
                 for _ in range(max(1, int(TICK_SECONDS * speed / step_s))):
                     step_twin(step_s)
                     engine.tick(engine_now())
+            # Let the agent decide where to look next.
+            #
+            # Deliberately AFTER the tick, and deliberately unable to raise an
+            # alarm. It chooses where money goes and says why; whether anybody
+            # is in danger stays with the rules, so an incident can always be
+            # explained by arithmetic a person can check by hand.
+            if agent_every > 0 and cycle % agent_every == 0:
+                _run_agent(engine)
         except Exception:
             logger.exception("engine tick failed")
         await asyncio.sleep(TICK_SECONDS)
+
+
+def _run_agent(engine) -> None:
+    """
+    One turn for the AI layer, recorded where the operator screen can see it.
+
+    Never allowed to break detection. If the model is unreachable, slow, or
+    returns something unusable, the deterministic policy answers instead and the
+    trace says which one acted - a crowd-safety system must not go quiet
+    because an API key expired mid-incident.
+    """
+    try:
+        # The same entry point /api/agent/step uses, so the demonstration
+        # exercises exactly the path the endpoint does rather than a lookalike.
+        # run_once both decides and acts, and logs its reasoning into the trace
+        # the operator screen reads.
+        ai.run_once(engine)
+    except Exception as exc:
+        engine.log("agent", f"the agent could not decide ({type(exc).__name__}); "
+                            f"the rules continue unaffected")
 
 
 @asynccontextmanager

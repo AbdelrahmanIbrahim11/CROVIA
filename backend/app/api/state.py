@@ -110,6 +110,8 @@ def get_state(_: dict = Depends(require_operator)):
                 "suppress",
                 "standdown",
                 "coverage",
+                "agent",
+                "position",
             )
         ][-25:],
         "monitored": {

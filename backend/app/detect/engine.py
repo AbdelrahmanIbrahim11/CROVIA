@@ -57,6 +57,9 @@ class ZoneState:
     # there. Without these the engine can only measure the NET change in a
     # headcount, which cannot tell a crowd flowing through a place from a crowd
     # stuck in it - and those need opposite responses.
+    # This zone's ordinary headcount, learned while nothing is wrong. A
+    # residential district's normal population must not read as a crowd.
+    baseline: float | None = None
     cohort: set = field(default_factory=set)
     cohort_at: float = 0.0
     inside_first_seen: dict = field(default_factory=dict)
@@ -800,6 +803,8 @@ class Engine:
                 zone_id=req.zone_id, people=people, people_rate_per_min=rate,
                 inside_sampled=inside, sustained_s=sustained,
                 outflow_ratio=outflow, dwell_ratio=dwell,
+                above_baseline=(None if not zs.baseline
+                                else people / max(zs.baseline, 1.0)),
             ))
             # A zone whose danger was predicted from the fixture list does not
             # have to re-prove that it is a crowd. Prediction plus a measured
@@ -813,6 +818,15 @@ class Engine:
                     v.fired_by = "predicted_and_rising"
                     v.reason = (f"predicted before the event; measurement confirms it "
                                 f"filling at {rate:,.0f}/min against {cap:,.0f}/min capacity")
+
+            # Learn what quiet looks like here - but only while quiet.
+            #
+            # Updated after the verdict and only when no alarm is live, so a
+            # long incident cannot slowly teach the zone that a crush is
+            # normal. Slow on purpose: one busy evening should barely move it.
+            if not zs.alerted and not v.dangerous:
+                zs.baseline = (people if zs.baseline is None
+                               else zs.baseline * 0.9 + people * 0.1)
 
             zs.last_verdict = v
             verdicts.append(v)
@@ -850,12 +864,32 @@ class Engine:
                         note = (f"position could not be established "
                                 f"({where['fixes']} usable fixes) - the alarm "
                                 f"stands on the measurement alone")
+                    # WHERE the middle of this crowd sits, and nothing more.
+                    #
+                    # This deliberately does NOT claim which alarms are real.
+                    # Tested against a full evening it got that backwards: the
+                    # genuine crowd was strung out along a 631 m approach walk
+                    # so its midpoint landed 459 m from the ramp, while two
+                    # false alarms on residential districts sat neatly around
+                    # their own crossings and looked pinpoint accurate.
+                    #
+                    # Had this been allowed to silence anything, it would have
+                    # silenced the one crowd that mattered and kept both of the
+                    # others. It is reported as a measurement for an operator
+                    # to weigh, never as a verdict.
+                    if where and where.get("known"):
+                        shape = ("at_the_link" if where["at_the_hazard"]
+                                 else "spread_out")
+                    else:
+                        shape = "not_located"
                     record = {"t": self.now, **v.to_dict(),
-                              "where": where, "position_note": note}
+                              "where": where, "position_note": note,
+                              "crowd_shape": shape}
                     self.alerts.append(record)
                     if len(self.alerts) > self.MAX_ALERTS:
                         del self.alerts[:-self.MAX_ALERTS]
-                    self.log("alert", f"{v.hazard_label}: {v.reason}", **v.to_dict())
+                    self.log("alert", f"{v.hazard_label}: {v.reason}",
+                             crowd_shape=shape, **v.to_dict())
                     if note:
                         self.log("position", note, zone=req.zone_id, **(where or {}))
                     self._notify(self.on_alert_raised, record)

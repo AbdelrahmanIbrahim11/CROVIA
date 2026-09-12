@@ -96,6 +96,13 @@ def get_state(_: dict = Depends(require_operator)):
     return {
         **snap,
         "alerts": e.alerts[-20:],
+        # Where the middle of each alarming crowd sits. A measurement for an
+        # operator to weigh, NOT a judgement about which alarms are real - a
+        # crowd strung along a a long approach reads as "spread_out" while a
+        # neighbourhood clustered round its own crossing reads as "at_the_link".
+        "crowd_shape": {
+            a["zone_id"]: a.get("crowd_shape", "not_located") for a in e.alerts[-20:]
+        },
         "predictions": e.predictions[-10:],
         "reasoning": [
             t

@@ -67,6 +67,9 @@ class Evidence:
     outflow_ratio: float | None = None   # exits vs the cohort that entered
     dwell_ratio: float | None = None     # dwell against free crossing time
     sustained_s: float = 0.0             # how long it has been filling
+    # How far above this zone's own quiet level the headcount sits. 1.0 is
+    # perfectly ordinary for this place; 7.0 means something is happening.
+    above_baseline: float | None = None
 
 
 @dataclass
@@ -169,7 +172,30 @@ def assess(city: City, ev: Evidence) -> Verdict:
     # happening at the pinch.
     room_at_the_pinch = (hazard.max_safe_people(city.density_critical)
                          if hazard else float("inf"))
-    packed_enough = ev.people >= room_at_the_pinch
+
+    # A population is not a crowd.
+    #
+    # Thousands of people live within 600 m of the Fox Hills crossing. They are
+    # at home, spread across a square kilometre, and they are never "leaving" -
+    # so the headcount is permanently high and the outflow permanently zero,
+    # which looks exactly like a blockage if you only read absolute numbers. In
+    # a live demonstration that raised critical alarms on three ordinary
+    # districts that had no event anywhere near them.
+    #
+    # The question is not "are there many people here" but "are there far more
+    # than usual HERE". A zone sitting at the same figure all evening is a
+    # neighbourhood; one climbing from 1,750 to 13,000 is a crowd.
+    # Twice its own normal level, which is a plain statement rather than a
+    # number chosen to make a particular evening come out right.
+    #
+    # Note what this does NOT fix. Residents of a district are numerous and
+    # never leave it, so "many people, nobody leaving" describes them perfectly
+    # - and no threshold on a headcount can separate that from a blockage,
+    # because the difference is WHERE people are standing, not how many there
+    # are. See the note on not_clearing below.
+    unusual = ev.above_baseline is None or ev.above_baseline >= 2.0
+
+    packed_enough = ev.people >= room_at_the_pinch and unusual
 
     not_clearing = packed_enough and (
         (ev.outflow_ratio is not None and ev.outflow_ratio < OUTFLOW_COLLAPSE)

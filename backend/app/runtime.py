@@ -44,6 +44,19 @@ _demo_engine: Engine | None = None
 _demo_twin = None
 _demo_started_at: float | None = None
 _demo_source: str = "twin"
+
+# How much faster simulated time runs than real time, during a demonstration.
+#
+# Six rather than one because a demonstration is watched by a person standing
+# there: at real speed the crowd takes about eight minutes to become dangerous,
+# which is long enough that most people conclude it is broken and stop looking.
+# At six the whole evening plays out in three or four minutes and the alarm
+# arrives after roughly a minute.
+#
+# It affects nothing outside a demonstration - the live service has no
+# simulated clock to accelerate - and it is a default in code rather than a
+# dashboard setting so that a deployment cannot silently lose it.
+DEMO_SPEED_DEFAULT = "6"
 _scenario: dict | None = None
 
 # How an engine gets wired to the rest of the system: saving alarms, warning
@@ -436,7 +449,7 @@ def demo_status() -> dict:
             "simulated_minute": ph.get("minute"),
             "real_seconds": round(_time.time() - _demo_started_at, 1)
             if _demo_started_at else 0,
-            "speed": float(os.getenv("CROVIA_TWIN_SPEED", "1")),
+            "speed": float(os.getenv("CROVIA_TWIN_SPEED", DEMO_SPEED_DEFAULT)),
             "alerts": len(_demo_engine.alerts),
         }
     z = os.getenv("CROVIA_TWIN_ZONE", "zone_stadium_north_concourse")
@@ -448,7 +461,7 @@ def demo_status() -> dict:
         "release_minutes": float(os.getenv("CROVIA_TWIN_MINUTES", "12")),
         "simulated_seconds": round(_demo_twin.t, 1) if _demo_twin else 0,
         "real_seconds": round(_time.time() - _demo_started_at, 1) if _demo_started_at else 0,
-        "speed": float(os.getenv("CROVIA_TWIN_SPEED", "12")),
+        "speed": float(os.getenv("CROVIA_TWIN_SPEED", DEMO_SPEED_DEFAULT)),
         "alerts": len(_demo_engine.alerts),
     }
 

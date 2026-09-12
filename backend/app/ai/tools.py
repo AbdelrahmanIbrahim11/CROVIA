@@ -82,7 +82,7 @@ def retrieve_locations_batch(engine, zone_id: str, batch_size: int = 10) -> dict
         return {"error": f"unknown zone {zone_id}"}
     z = city.zones[zone_id]
     area = Area(z.center.lat, z.center.lon, z.radius_m)
-    panel = engine.registry.panel_members()[:batch_size * 3]
+    panel = engine.registry.panel_members()[: batch_size * 3]
 
     reachable, fixes, unknown = [], [], 0
     for hashed in panel:
@@ -108,9 +108,12 @@ def retrieve_locations_batch(engine, zone_id: str, batch_size: int = 10) -> dict
         "reachable_checked": len(reachable),
         "fixes": len(fixes),
         "unknown": unknown,
-        "median_accuracy_m": (round(sorted(f["radius_m"] for f in fixes)[len(fixes) // 2])
-                              if fixes else None),
-        "note": "UNKNOWN is a normal answer, not an error",
+        "median_accuracy_m": (
+            round(sorted(f["radius_m"] for f in fixes)[len(fixes) // 2])
+            if fixes
+            else None
+        ),
+        "note": "UNKNOWN is a normal answer, not an ebatch_sizerror",
     }
 
 
@@ -125,29 +128,44 @@ def judge(engine, zone_id: str) -> dict:
         return {"error": f"unknown zone {zone_id}"}
     zs = engine.zones[zone_id]
     people = zs.counts[-1][1] if zs.counts else 0.0
-    v = assess(city, Evidence(
-        zone_id=zone_id, people=people, people_rate_per_min=zs.rate_per_min(),
-        inside_sampled=len(zs.counts),
-        sustained_s=(0.0 if zs.filling_since is None else engine.now - zs.filling_since),
-    ))
+    v = assess(
+        city,
+        Evidence(
+            zone_id=zone_id,
+            people=people,
+            people_rate_per_min=zs.rate_per_min(),
+            inside_sampled=len(zs.counts),
+            sustained_s=(
+                0.0 if zs.filling_since is None else engine.now - zs.filling_since
+            ),
+        ),
+    )
     return v.to_dict()
 
 
 TOOL_SPECS = [
-    {"name": "arm_chokepoints",
-     "description": "Start watching a chokepoint. Returns its capacity from the city plan "
-                    "and the current fill rate. Cheap. Call this first.",
-     "args": {"zone_id": "str"}},
-    {"name": "verify_and_filter",
-     "description": "Count how many people are inside the zone using Location Verification. "
-                    "Moderate cost. Call this when a zone looks worth investigating.",
-     "args": {"zone_id": "str", "max_calls": "int"}},
-    {"name": "retrieve_locations_batch",
-     "description": "Fetch real positions for a small batch of devices. Most expensive. "
-                    "Only call this after counting shows the crowd is growing.",
-     "args": {"zone_id": "str", "batch_size": "int"}},
-    {"name": "judge",
-     "description": "Ask the deterministic rules whether this zone is dangerous. Free. "
-                    "You do not decide this yourself.",
-     "args": {"zone_id": "str"}},
+    {
+        "name": "arm_chokepoints",
+        "description": "Start watching a chokepoint. Returns its capacity from the city plan "
+        "and the current fill rate. Cheap. Call this first.",
+        "args": {"zone_id": "str"},
+    },
+    {
+        "name": "verify_and_filter",
+        "description": "Count how many people are inside the zone using Location Verification. "
+        "Moderate cost. Call this when a zone looks worth investigating.",
+        "args": {"zone_id": "str", "max_calls": "int"},
+    },
+    {
+        "name": "retrieve_locations_batch",
+        "description": "Fetch real positions for a small batch of devices. Most expensive. "
+        "Only call this after counting shows the crowd is growing.",
+        "args": {"zone_id": "str", "batch_size": "int"},
+    },
+    {
+        "name": "judge",
+        "description": "Ask the deterministic rules whether this zone is dangerous. Free. "
+        "You do not decide this yourself.",
+        "args": {"zone_id": "str"},
+    },
 ]

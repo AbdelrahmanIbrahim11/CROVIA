@@ -365,7 +365,7 @@ def demo_running() -> bool:
 
 
 def start_demo(zone: str | None = None, attendees: int | None = None,
-               minutes: float | None = None, source: str = "scenario",
+               minutes: float | None = None, source: str = "twin",
                scenario: str = "egress") -> dict:
     """
     Begin a fresh simulated event.

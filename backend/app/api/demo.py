@@ -72,8 +72,16 @@ class SimulationIn(BaseModel):
     published detection figures were measured on.
     """
 
-    source: str = "scenario"
-    # Which evening to play. See GET /api/demo/scenarios for the list.
+    # Which world to run.
+    #
+    # "twin" is the default because it is what the published detection figures
+    # were measured on and what the deployed demonstration has always shown.
+    # "scenario" plays one of the harder evenings in scenario/catalogue.py -
+    # a fairer test, and still being calibrated, so it is opt-in rather than
+    # something a visitor gets by surprise.
+    source: str = "twin"
+    # Which evening to play when source is "scenario".
+    # See GET /api/demo/scenarios for the list.
     scenario: str = "egress"
     zone: str | None = None
     attendees: int | None = None

@@ -150,25 +150,32 @@ def assess(city: City, ev: Evidence) -> Verdict:
         and ev.people >= MIN_PEOPLE
         and not flowing_freely
     )
-    # Being stuck requires having been trying to get somewhere.
+    # Being stuck only matters if there is no room to be stuck in.
     #
-    # "Not clearing" measures how slowly people are leaving, and a stadium
-    # audience watching a match leaves at a rate of zero - not because anybody
-    # is trapped, but because nobody wants to go yet. Measured against a live
-    # scenario this rule fired three times on an evening where the true density
-    # was 0.00 and there was no crowd anywhere near a narrow link.
+    # The rule below measures how slowly people are leaving, and on its own that
+    # cannot tell a crowd crushed against a ramp from an audience sitting
+    # through a match - both answer "still here, not moving". Tested against a
+    # live scenario it fired three times on an evening where the true density
+    # was 0.00 and nobody was near a narrow link.
     #
-    # A crowd that is genuinely blocked still has people arriving into it: that
-    # is what makes the queue grow and what makes it dangerous. A crowd that is
-    # merely sitting still is an audience, and a crowd whose count is falling is
-    # already going home. Requiring people to still be arriving separates the
-    # one case that matters from the two that do not.
-    still_arriving = ev.people_rate_per_min > 0
+    # The test is not whether people move, it is whether there are more of them
+    # than the narrow link can safely hold. The ramp holds about 5,300 people
+    # before it is dangerous; a crowd of 3,000 that is not leaving is an
+    # audience, and a crowd of 9,000 that is not leaving has nowhere to put
+    # 3,700 of them.
+    #
+    # Corridor density was tried first and does not work: a zone's corridor is
+    # mostly wide plaza, so the figure is diluted to near nothing whatever is
+    # happening at the pinch.
+    room_at_the_pinch = (hazard.max_safe_people(city.density_critical)
+                         if hazard else float("inf"))
+    packed_enough = ev.people >= room_at_the_pinch
 
-    not_clearing = still_arriving and (
+    not_clearing = packed_enough and (
         (ev.outflow_ratio is not None and ev.outflow_ratio < OUTFLOW_COLLAPSE)
         or (ev.dwell_ratio is not None and ev.dwell_ratio >= DWELL_STUCK)
     )
+
     threshold = city.density_critical / max(risk, 1.0)
     over_density = corridor_density >= threshold
 

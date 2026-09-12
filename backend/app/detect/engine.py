@@ -30,7 +30,7 @@ from typing import Callable
 
 from app.camara.client import Area, ApiError, CamaraClient
 from app.core.budget import Budget, Ledger, Request
-from app.core.city import City
+from app.core.city import City, LatLon
 from app.core.registry import DeviceRegistry
 from app.detect.danger import (K_ANONYMITY as K_ANON_MIN, Evidence, Verdict,
                                assess)
@@ -272,7 +272,13 @@ class Engine:
     MAX_TRACE = 500
     MAX_ALERTS = 200
     # How many previously-inside devices to re-ask, to see who left.
-    COHORT_SIZE = 18
+    #
+    # Kept small on purpose. These calls come out of the same budget as the
+    # headcount, and at eighteen they crowded it out: the count grew noisy, the
+    # measured fill rate swung above and below its threshold, the run of
+    # confirmations never reached two, and a genuine crush produced no alarm at
+    # all. Knowing who left is worth far less than counting well.
+    COHORT_SIZE = 10
     MAX_PREDICTIONS = 50
 
     def log(self, kind: str, msg: str, **extra) -> None:
@@ -445,7 +451,10 @@ class Engine:
         cohort = []
         if zs is not None and zs.cohort:
             pool = [h for h in zs.cohort if h not in chosen]
-            cohort = self._rng.sample(pool, min(self.COHORT_SIZE, len(pool)))
+            # Never take more than a fifth of what this cycle was granted -
+            # the headcount is the measurement that matters.
+            room = max(0, min(self.COHORT_SIZE, max_calls // 5, len(pool)))
+            cohort = self._rng.sample(pool, room) if room else []
         inside = checked = unknown = 0
         now_inside: set = set()
         cohort_checked = cohort_left = 0
@@ -521,7 +530,7 @@ class Engine:
         outflow = None
         # Eight answers minimum. With fewer, one person's phone failing to
         # answer swings the ratio far enough to invent a blockage.
-        if cohort_checked >= 8 and zs is not None:
+        if cohort_checked >= 6 and zs is not None:
             elapsed = max(self.now - zs.cohort_at, 1.0)
             free_time = max(self.city.free_crossing_time_s(zone_id), 1.0)
             expected = min(0.95, max(elapsed / free_time, 0.01))
@@ -545,6 +554,90 @@ class Engine:
             zs.cohort_at = self.now
 
         return people, inside, checked, outflow, dwell
+
+    # How many coordinate fixes to buy when an alarm is about to be raised.
+    # Retrieval costs about three times a verification, so this is deliberately
+    # small and only ever spent at the moment something fires.
+    POSITION_FIXES = 20
+    # Below this many usable fixes the answer is not worth reporting.
+    POSITION_MIN_FIXES = 6
+
+    def locate_crowd(self, zone_id: str) -> dict | None:
+        """
+        Ask where inside the zone the crowd is actually standing.
+
+        WHY THIS EXISTS. Counting tells you how many people are in a 600 m
+        circle; it cannot tell you whereabouts. Those are very different
+        situations: eighteen thousand people seated in a stadium bowl and
+        eighteen thousand crushed against an exit ramp produce an identical
+        headcount and an identical "nobody is leaving", and only one of them is
+        an emergency.
+
+        WHY IT CAN WORK AT ALL. Positioning error is 150-400 m and the ramp is
+        147 m long, so a fix cannot be resolved onto the ramp itself. But the
+        bowl and the ramp are roughly 700 m apart, which is larger than the
+        error - so telling those two places apart is a question the network CAN
+        answer, even though locating either one precisely is not.
+
+        WHAT IT NEVER DOES. It never cancels an alarm. Suppressing a warning is
+        the most dangerous thing this system could do - a mistake there is a
+        missed crush rather than an irritated operator - and a median position
+        drawn from twenty noisy fixes is nowhere near strong enough evidence to
+        overrule the arithmetic. The result is attached to the verdict as a
+        note, and a person decides what it means.
+        """
+        zs = self.zones.get(zone_id)
+        hazard = self.city.bottleneck_of(zone_id)
+        if zs is None or hazard is None or not zs.cohort:
+            return None
+
+        z = self.city.zones[zone_id]
+        sample = list(zs.cohort)
+        if len(sample) > self.POSITION_FIXES:
+            sample = self._rng.sample(sample, self.POSITION_FIXES)
+
+        lats: list[float] = []
+        lons: list[float] = []
+        for hashed in sample:
+            phone = self.registry.vault.phone_for(hashed)
+            if not phone:
+                continue
+            try:
+                r = self.client.retrieve_location(phone, 120, z.district_id)
+            except ApiError:
+                continue
+            self.budget.spend(3, self.now)
+            if r.get("status") != "OK":
+                continue
+            lats.append(float(r["latitude"]))
+            lons.append(float(r["longitude"]))
+
+        if len(lats) < self.POSITION_MIN_FIXES:
+            # Not enough to say anything. Reported as unknown rather than as
+            # reassurance - the alarm is unaffected either way.
+            return {"fixes": len(lats), "known": False}
+
+        # Median, not mean. A couple of wild fixes are normal and an average
+        # would be dragged off by them.
+        lats.sort()
+        lons.sort()
+        mid = LatLon(lats[len(lats) // 2], lons[len(lons) // 2])
+        # The middle of the narrow link, which is the place that matters.
+        hz = hazard.points[len(hazard.points) // 2]
+        distance = mid.meters_to(hz)
+
+        # How spread out the fixes are. A wide spread usually means the crowd is
+        # in two places at once - streaming from one to the other - and then the
+        # median sits between them and describes neither.
+        spread = sum(mid.meters_to(LatLon(la, lo))
+                     for la, lo in zip(lats, lons)) / len(lats)
+
+        return {
+            "fixes": len(lats), "known": True,
+            "metres_from_hazard": round(distance),
+            "spread_m": round(spread),
+            "at_the_hazard": distance <= 450,
+        }
 
     # ---- the tick ------------------------------------------------------
 
@@ -732,11 +825,39 @@ class Engine:
             if v.dangerous:
                 if not zs.alerted:
                     zs.alerted = True
-                    record = {"t": self.now, **v.to_dict()}
+                    # Buy coordinates once, at the moment of firing, to say
+                    # whereabouts in the circle these people are. This informs
+                    # the alarm; it never withholds it.
+                    where = self.locate_crowd(req.zone_id)
+                    note = None
+                    if where and where.get("known"):
+                        d = where["metres_from_hazard"]
+                        if where["at_the_hazard"]:
+                            note = (f"position confirms it: the crowd is about "
+                                    f"{d} m from {v.hazard_label}")
+                        elif where["spread_m"] > 400:
+                            note = (f"the crowd is spread over about "
+                                    f"{where['spread_m']} m and its middle sits "
+                                    f"{d} m from {v.hazard_label} - it may be "
+                                    f"moving toward the link rather than held at it")
+                        else:
+                            note = (f"position suggests these people are about "
+                                    f"{d} m from {v.hazard_label}, so they may be "
+                                    f"gathered elsewhere in the zone rather than "
+                                    f"held at it - treat the size as real and the "
+                                    f"location as uncertain")
+                    elif where is not None:
+                        note = (f"position could not be established "
+                                f"({where['fixes']} usable fixes) - the alarm "
+                                f"stands on the measurement alone")
+                    record = {"t": self.now, **v.to_dict(),
+                              "where": where, "position_note": note}
                     self.alerts.append(record)
                     if len(self.alerts) > self.MAX_ALERTS:
                         del self.alerts[:-self.MAX_ALERTS]
                     self.log("alert", f"{v.hazard_label}: {v.reason}", **v.to_dict())
+                    if note:
+                        self.log("position", note, zone=req.zone_id, **(where or {}))
                     self._notify(self.on_alert_raised, record)
                 ds.state = ALERT
             else:

@@ -141,14 +141,16 @@ class World:
         two scenarios meaningful.
         """
         self.spec = spec or CATALOGUE[0]
-        # A seed that can be varied per run.
+        # Seed comes from the environment when not given, so a run can be
+        # repeated exactly or varied deliberately.
         #
-        # Without this every run of a scenario was the same evening with the
-        # same people in the same places, so ten runs measured one thing ten
-        # times rather than ten things once - and a rate of "3 out of 3" meant
-        # no more than "1 out of 1".
+        # This was lost once to a later rewrite of this file and the loss was
+        # silent: every "different seed" produced the identical evening, so
+        # three runs agreeing meant nothing at all. Checked explicitly now
+        # rather than assumed.
         if seed is None:
             seed = int(os.getenv("CROVIA_SCENARIO_SEED", SEED))
+        self.seed = seed
         self.rng = np.random.default_rng(seed)
         self.t = 0.0
         self.n = int(PLANNED_POPULATION * self.spec.present_share)

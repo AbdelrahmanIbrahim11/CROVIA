@@ -32,7 +32,8 @@ from app.camara.client import Area, ApiError, CamaraClient
 from app.core.budget import Budget, Ledger, Request
 from app.core.city import City
 from app.core.registry import DeviceRegistry
-from app.detect.danger import Evidence, Verdict, assess
+from app.detect.danger import (K_ANONYMITY as K_ANON_MIN, Evidence, Verdict,
+                               assess)
 
 IDLE, WATCHING, CONFIRMING, ALERT, STANDDOWN = "IDLE", "WATCHING", "CONFIRMING", "ALERT", "STANDDOWN"
 
@@ -52,6 +53,13 @@ class ZoneState:
     # honour the zone's own urgency rather than its district's stale state.
     next_interval: float | None = None
     consecutive_high: int = 0
+    # Who was found inside last time, and when each device was first seen
+    # there. Without these the engine can only measure the NET change in a
+    # headcount, which cannot tell a crowd flowing through a place from a crowd
+    # stuck in it - and those need opposite responses.
+    cohort: set = field(default_factory=set)
+    cohort_at: float = 0.0
+    inside_first_seen: dict = field(default_factory=dict)
 
     # How far back the fill rate looks. Long enough to be steady, short enough
     # to still be about now.
@@ -263,6 +271,8 @@ class Engine:
     # next to what would accumulate over a week.
     MAX_TRACE = 500
     MAX_ALERTS = 200
+    # How many previously-inside devices to re-ask, to see who left.
+    COHORT_SIZE = 18
     MAX_PREDICTIONS = 50
 
     def log(self, kind: str, msg: str, **extra) -> None:
@@ -362,10 +372,18 @@ class Engine:
         """
         out = {}
         for did, st in self.districts.items():
-            fleet = len(self.registry.fleet(did))
-            if fleet < self.MIN_FLEET:
+            fleet = set(self.registry.fleet(did))
+            if len(fleet) < self.MIN_FLEET:
                 continue
-            out[did] = len(st.high_devices) / fleet
+            # Count only devices STILL in this district.
+            #
+            # A device that reported congestion and then walked into another
+            # district stayed in this list, while the fleet it was divided by
+            # shrank - so the share climbed as a district emptied, and was
+            # measured at 1.28 in testing. A fraction above 1.0 is not a busy
+            # district, it is arithmetic about people who have left.
+            busy = sum(1 for h in st.high_devices if h in fleet)
+            out[did] = busy / len(fleet)
         return out
 
     def coverage(self) -> dict[str, dict]:
@@ -412,8 +430,28 @@ class Engine:
         # be near the crowd the count stays near zero for ever. That is worst
         # exactly when budget is tight and the subset is smallest.
         chosen = self._rng.sample(panel, take) if take < len(panel) else list(panel)
+
+        # Re-ask some of the people who WERE inside last time.
+        #
+        # The fresh sample gives an unbiased headcount but says nothing about
+        # whether anyone is getting out: a zone holding 8,000 people looks the
+        # same whether they are walking through or trapped. Re-checking a small
+        # cohort answers that directly - if most of them are still inside a
+        # cycle later, the place is not clearing.
+        #
+        # Kept small because it is paid for out of the same budget, and it is
+        # counted separately so it can never distort the headcount.
+        zs = self.zones.get(zone_id)
+        cohort = []
+        if zs is not None and zs.cohort:
+            pool = [h for h in zs.cohort if h not in chosen]
+            cohort = self._rng.sample(pool, min(self.COHORT_SIZE, len(pool)))
         inside = checked = unknown = 0
-        for hashed in chosen:
+        now_inside: set = set()
+        cohort_checked = cohort_left = 0
+
+        for hashed in list(chosen) + list(cohort):
+            is_cohort = hashed in cohort
             phone = self.registry.vault.phone_for(hashed)
             if not phone:
                 continue
@@ -435,12 +473,25 @@ class Engine:
             # It is excluded from both sides instead. The remaining answers are
             # still a fair sample of the people the network CAN see.
             if res == "UNKNOWN":
-                unknown += 1
+                if not is_cohort:
+                    unknown += 1
+                continue
+
+            here = res == "TRUE" or (res == "PARTIAL" and r.get("match_rate", 0) >= 55)
+            if is_cohort:
+                # Never counted in the headcount - this cohort was chosen
+                # BECAUSE they were inside, so including them would inflate it.
+                cohort_checked += 1
+                if not here:
+                    cohort_left += 1
+                else:
+                    now_inside.add(hashed)
                 continue
 
             checked += 1
-            if res == "TRUE" or (res == "PARTIAL" and r.get("match_rate", 0) >= 55):
+            if here:
                 inside += 1
+                now_inside.add(hashed)
 
         if unknown and checked:
             share = unknown / (unknown + checked)
@@ -454,7 +505,46 @@ class Engine:
                          zone=zone_id)
 
         people = self.registry.people_from_panel(inside, checked, self.city.population)
-        return people, inside, checked
+
+        # What the cohort revealed, measured against what free movement would
+        # have given over the SAME stretch of time.
+        #
+        # A raw fraction is meaningless on its own. A zone is 600 m across and
+        # takes about fifteen minutes to walk, so over a one-minute gap barely
+        # any of a cohort should have left even when everybody is strolling
+        # through unobstructed. Compared against a flat 30% that read as "not
+        # clearing" every single time, and the rule fired on calm evenings.
+        #
+        # So this is a RATIO: 1.0 means people are leaving exactly as fast as
+        # unobstructed walking would take them, and 0.2 means five times slower
+        # than they should be, which is what being stuck actually looks like.
+        outflow = None
+        # Eight answers minimum. With fewer, one person's phone failing to
+        # answer swings the ratio far enough to invent a blockage.
+        if cohort_checked >= 8 and zs is not None:
+            elapsed = max(self.now - zs.cohort_at, 1.0)
+            free_time = max(self.city.free_crossing_time_s(zone_id), 1.0)
+            expected = min(0.95, max(elapsed / free_time, 0.01))
+            outflow = (cohort_left / cohort_checked) / expected
+        dwell = None
+        if zs is not None:
+            for h in now_inside:
+                zs.inside_first_seen.setdefault(h, self.now)
+            # Anybody no longer inside stops accumulating dwell.
+            for h in list(zs.inside_first_seen):
+                if h not in now_inside and h not in zs.cohort:
+                    zs.inside_first_seen.pop(h, None)
+            if len(now_inside) >= K_ANON_MIN:
+                ages = sorted(self.now - zs.inside_first_seen.get(h, self.now)
+                              for h in now_inside)
+                median_age = ages[len(ages) // 2]
+                free_time = self.city.free_crossing_time_s(zone_id)
+                if median_age > 0 and free_time > 0:
+                    dwell = median_age / free_time
+            zs.cohort = now_inside
+            zs.cohort_at = self.now
+
+        return people, inside, checked, outflow, dwell
 
     # ---- the tick ------------------------------------------------------
 
@@ -567,7 +657,8 @@ class Engine:
                          "not silently treated as safe", zone=req.zone_id)
                 continue
 
-            people, inside, checked = self.count_zone(req.zone_id, allowed)
+            people, inside, checked, outflow, dwell = self.count_zone(
+                req.zone_id, allowed)
             if checked == 0:
                 continue
             # Use the interval this zone actually asked for, not the one its
@@ -615,6 +706,7 @@ class Engine:
             v = assess(self.city, Evidence(
                 zone_id=req.zone_id, people=people, people_rate_per_min=rate,
                 inside_sampled=inside, sustained_s=sustained,
+                outflow_ratio=outflow, dwell_ratio=dwell,
             ))
             # A zone whose danger was predicted from the fixture list does not
             # have to re-prove that it is a crowd. Prediction plus a measured

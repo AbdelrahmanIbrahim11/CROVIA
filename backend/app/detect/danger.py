@@ -113,7 +113,13 @@ K_ANONYMITY = 5
 # steady state does that too, and at 20% this produced a false alarm on a safe
 # staggered release.
 FILLING_FRACTION = 0.60
-# Below this share of the entering cohort coming out, the place is not clearing.
+# How slowly people must be leaving, as a fraction of the rate unobstructed
+# walking would give, before the place counts as not clearing. 0.30 means five
+# times slower than they should be.
+#
+# This used to be a flat share of the cohort, which ignored how much time had
+# passed and therefore fired on any crowd that merely sat in a zone - a stadium
+# audience watching a match read as "not clearing" every cycle.
 OUTFLOW_COLLAPSE = 0.30
 # Dwell longer than this multiple of the free crossing time means stuck.
 DWELL_STUCK = 1.8
@@ -131,13 +137,35 @@ def assess(city: City, ev: Evidence) -> Verdict:
     corridor_density = ev.people / max(corridor_area, 1.0)
 
     # --- the three tests ---------------------------------------------------
+    # Somebody walking through a zone and out the other side raises the count
+    # exactly as somebody piling up against a narrow link does, and only one of
+    # those is dangerous. If the cohort is leaving at close to walking pace the
+    # crowd is flowing, not accumulating, whatever the headcount is doing.
+    flowing_freely = (ev.outflow_ratio is not None and ev.outflow_ratio >= 0.75)
+
     filling = (
         ev.sustained_s >= 120.0   # the engine already required two confirmations
         and ev.people_rate_per_min >= FILLING_FRACTION * capacity
         and risk >= 1.4
         and ev.people >= MIN_PEOPLE
+        and not flowing_freely
     )
-    not_clearing = (
+    # Being stuck requires having been trying to get somewhere.
+    #
+    # "Not clearing" measures how slowly people are leaving, and a stadium
+    # audience watching a match leaves at a rate of zero - not because anybody
+    # is trapped, but because nobody wants to go yet. Measured against a live
+    # scenario this rule fired three times on an evening where the true density
+    # was 0.00 and there was no crowd anywhere near a narrow link.
+    #
+    # A crowd that is genuinely blocked still has people arriving into it: that
+    # is what makes the queue grow and what makes it dangerous. A crowd that is
+    # merely sitting still is an audience, and a crowd whose count is falling is
+    # already going home. Requiring people to still be arriving separates the
+    # one case that matters from the two that do not.
+    still_arriving = ev.people_rate_per_min > 0
+
+    not_clearing = still_arriving and (
         (ev.outflow_ratio is not None and ev.outflow_ratio < OUTFLOW_COLLAPSE)
         or (ev.dwell_ratio is not None and ev.dwell_ratio >= DWELL_STUCK)
     )
@@ -169,9 +197,20 @@ def assess(city: City, ev: Evidence) -> Verdict:
                   f"{K_ANONYMITY}, reporting at district level only")
     elif filling and enough_people:
         dangerous, fired_by = True, "filling"
-        reason = (f"arriving at about {ev.people_rate_per_min:,.0f} people/min against a "
-                  f"{hazard.width_m:.0f} m link that can pass ~{capacity:,.0f}/min - "
-                  f"more are coming in than can get out")
+        share = ev.people_rate_per_min / max(capacity, 1.0)
+        # Worded from the numbers rather than from an assumption.
+        #
+        # This used to end "more are coming in than can get out" whatever the
+        # figures said, and the rule fires from 60% of capacity - so it printed
+        # that sentence under "417 people/min against a link that can pass 540",
+        # which contradicts itself and would destroy an operator's trust in
+        # everything else on the screen.
+        tail = ("more are arriving than it can pass"
+                if share >= 1.0 else
+                f"filling at {share:.0%} of what it can pass, and still rising")
+        reason = (f"the crowd here is growing by about {ev.people_rate_per_min:,.0f} "
+                  f"people/min against a {hazard.width_m:.0f} m link that can pass "
+                  f"~{capacity:,.0f}/min - {tail}")
     elif not_clearing and enough_people:
         dangerous, fired_by = True, "not_clearing"
         how = (f"only {ev.outflow_ratio:.0%} of the arriving group has come out"

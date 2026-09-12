@@ -59,8 +59,22 @@ _cached_at: float = 0.0
 
 
 class SimulationIn(BaseModel):
-    """Optional shape of the crowd to simulate."""
+    """
+    Optional shape of what to simulate.
 
+    `source` chooses the world. "scenario" is the default and the one to show a
+    visitor: an ordinary evening that turns dangerous, on a city built to remove
+    the assumptions that flattered the earlier tests - app ownership varies
+    almost five-fold between districts, and the planned population figure is
+    deliberately a little wrong.
+
+    "twin" keeps the older, faster world available, which is still what the
+    published detection figures were measured on.
+    """
+
+    source: str = "scenario"
+    # Which evening to play. See GET /api/demo/scenarios for the list.
+    scenario: str = "egress"
     zone: str | None = None
     attendees: int | None = None
     release_minutes: float | None = None
@@ -156,6 +170,41 @@ def nokia_check(refresh: bool = False, _: dict = Depends(current_user)):
     return _cache
 
 
+@router.get("/scenarios")
+def list_scenarios(_: dict = Depends(current_user)):
+    """
+    The evenings a visitor can choose from, in plain language.
+
+    Deliberately includes evenings where an alarm would be WRONG. A list made
+    only of disasters would prove nothing about the thing that actually decides
+    whether an operator keeps the system switched on, which is how often it
+    cries wolf on an ordinary night.
+    """
+    from scenario.catalogue import listing
+
+    items = listing()
+    return {
+        "scenarios": items,
+        "how_to_run": "POST /api/demo/simulation with {\"scenario\": \"<key>\"}",
+        "note": (
+            f"{sum(1 for i in items if i['should_an_alarm_fire'])} of "
+            f"{len(items)} should raise an alarm. The rest must stay silent - "
+            "those are the harder tests."
+        ),
+        "honesty": [
+            "App ownership varies almost five-fold between districts, so the "
+            "counting panel genuinely misrepresents the city.",
+            "CROVIA multiplies by the city plan's 30,000 while only about "
+            "27,600 people are present, so its denominator is wrong.",
+            "Nothing in the simulated world uses width x 72, the detector's "
+            "own formula - the ramp's throughput emerges from space and "
+            "walking speed instead.",
+            "23% of location answers come back UNKNOWN, positioning carries a "
+            "fixed per-cell bias, and 1.5% of calls fail outright.",
+        ],
+    }
+
+
 @router.get("/simulation")
 def simulation_status(_: dict = Depends(current_user)):
     """What, if anything, is being simulated right now."""
@@ -177,6 +226,9 @@ def start_simulation(body: SimulationIn | None = None,
     easy to see, and easy to stop.
     """
     body = body or SimulationIn()
+    if body.source not in ("scenario", "twin"):
+        raise HTTPException(status_code=422,
+                            detail="source must be 'scenario' or 'twin'")
     if body.attendees is not None and not (100 <= body.attendees <= 200_000):
         raise HTTPException(status_code=422,
                             detail="attendees must be between 100 and 200,000")
@@ -189,17 +241,51 @@ def start_simulation(body: SimulationIn | None = None,
             raise HTTPException(status_code=422,
                                 detail=f"unknown zone {body.zone}")
 
-    status = runtime.start_demo(body.zone, body.attendees, body.release_minutes)
-    logger.info("demonstration started by %s", user.get("username"))
+    if body.source == "scenario":
+        from scenario.catalogue import BY_KEY
+        if body.scenario not in BY_KEY:
+            raise HTTPException(
+                status_code=422,
+                detail=f"unknown scenario {body.scenario!r} - see "
+                       f"GET /api/demo/scenarios for the list")
+
+    status = runtime.start_demo(body.zone, body.attendees, body.release_minutes,
+                                source=body.source, scenario=body.scenario)
+    logger.info("demonstration started by %s (%s)",
+                user.get("username"), body.source)
+
+    if body.source == "scenario":
+        from scenario.catalogue import BY_KEY
+        spec = BY_KEY[body.scenario]
+        expect = [f"{p.name.upper()} ({p.minutes:.0f} min) - {p.note}"
+                  for p in spec.schedule]
+        expect.append(f"EXPECTED RESULT: {spec.expected}")
+    elif False:
+        expect = [
+            "CALM - an ordinary evening. Nothing should happen, and almost no "
+            "money is spent.",
+            "ARRIVAL - 18,000 people travel to the stadium and go inside. The "
+            "district fills; the exit ramp does not. Still no alarm.",
+            "MATCH - everyone is seated and packed. Cell towers are saturated "
+            "and congestion reads High across the district. This is the hardest "
+            "false-alarm test in the scenario, and nothing should fire.",
+            "EGRESS - full time. The crowd funnels into a 9 m ramp, the alarm "
+            "fires, and a warning arrives on your phone.",
+            "DISPERSAL - the zone clears, the alarm stands down, and an "
+            "all-clear reaches everyone who was warned.",
+        ]
+    else:
+        expect = [
+            "A crowd builds at the chosen chokepoint over the next few minutes.",
+            "The alarm fires before it becomes dangerous, not after.",
+        ]
+
     return {
         **status,
         "started_by": user.get("username"),
-        "what_to_expect": [
-            "A crowd builds at the chosen chokepoint over the next few minutes.",
-            "The alarm fires before it becomes dangerous, not after.",
-            "Every screen now shows the simulated city. Nothing here is real "
-            "network data, and the service says so in its own logs.",
-        ],
+        "what_to_expect": expect,
+        "note": "Every screen now shows the simulated city. Nothing here is "
+                "real network data, and the service says so in its own logs.",
     }
 
 

@@ -20,10 +20,12 @@ from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
 
 from app.api.auth import router as auth_router
+from app.api.demo import router as demo_router
 from app.api.state import router as state_router
 from app.api.webhooks import router as webhook_router
 from app.core.city import city
 from app.db.redis import close_redis, get_redis
+from app import runtime
 from app.runtime import engine_now, get_engine, step_twin
 from app.services import (enrollment, incidents, operator_zones, priority,
                           warnings)
@@ -46,7 +48,12 @@ async def _engine_loop() -> None:
     spend has to happen on a rhythm of its own, otherwise a quiet city would
     never be reassessed and a busy one would be reassessed on every packet.
     """
-    engine = get_engine()
+    # Fetched inside the loop, not once before it.
+    #
+    # A demonstration can be started at any moment and replaces the engine
+    # every screen reads. Holding a reference from startup would leave this
+    # loop faithfully ticking the engine nobody is looking at, while the one on
+    # screen never advances.
     # In twin mode a demo is sped up, but the ENGINE must still see the world at
     # its normal cadence. Advancing thirty minutes of simulated time and then
     # ticking once means the engine takes two samples of a crowd that formed
@@ -56,6 +63,7 @@ async def _engine_loop() -> None:
     step_s = float(os.getenv("ENGINE_STEP_SECONDS", "30"))
     while True:
         try:
+            engine = get_engine()
             now = engine_now()
             if now is None:
                 engine.tick()
@@ -111,14 +119,14 @@ async def lifespan(app: FastAPI):
 
     # Write every alarm down. The engine calls these; it never holds a session
     # itself, so a database problem can slow the record but not the detection.
-    def _record_alarm(record: dict) -> None:
+    def _record_alarm(eng, record: dict) -> None:
         db = next(getdb())
         try:
             row = incidents.open_incident(db, record)
             # Recording the alarm and telling people about it are one action.
             # Splitting them is how a system ends up with a complete incident
             # log and nobody warned.
-            result = warnings.warn_people_near(db, engine.registry, record,
+            result = warnings.warn_people_near(db, eng.registry, record,
                                                incident_id=row.id)
             # Give the responders a connection that works.
             #
@@ -126,21 +134,21 @@ async def lifespan(app: FastAPI):
             # because acknowledging is itself an action taken in the app -
             # waiting for it would protect the connection only after it was
             # already needed.
-            prio = priority.dispatch(db, engine.client, row.id,
+            prio = priority.dispatch(db, eng.client, row.id,
                                      record.get("zone_id", ""))
             if prio.get("opened"):
-                engine.log("priority",
-                           f"{prio['opened']} responders given a protected "
-                           f"connection ({prio['profile']})",
-                           zone=record.get("zone_id"), **prio)
-            engine.log("warned",
-                       f"{result['sent']} people in {result.get('district_id', '?')} "
-                       f"were warned about {record.get('segment_label')}",
-                       zone=record.get("zone_id"), **result)
+                eng.log("priority",
+                        f"{prio['opened']} responders given a protected "
+                        f"connection ({prio['profile']})",
+                        zone=record.get("zone_id"), **prio)
+            eng.log("warned",
+                    f"{result['sent']} people in {result.get('district_id', '?')} "
+                    f"were warned about {record.get('segment_label')}",
+                    zone=record.get("zone_id"), **result)
         finally:
             db.close()
 
-    def _close_alarm(zone_id: str, _t: float) -> None:
+    def _close_alarm(eng, zone_id: str, _t: float) -> None:
         db = next(getdb())
         try:
             row = incidents.open_row_for(db, zone_id)
@@ -148,12 +156,26 @@ async def lifespan(app: FastAPI):
             # Hand the priority back. Sessions are billed while they live, and
             # an operator will withdraw a priority that never ends.
             if row is not None:
-                priority.stand_down(db, engine.client, row.id)
+                priority.stand_down(db, eng.client, row.id)
         finally:
             db.close()
 
-    engine.on_alert_raised = _record_alarm
-    engine.on_alert_cleared = _close_alarm
+    def _wire(e) -> None:
+        """
+        Attach the hooks to an engine.
+
+        Bound to the engine being wired rather than to the one this function was
+        written beside. A demonstration builds its own engine, and hooks that
+        reached back to the booted one warned the wrong fleet and wrote their
+        trace onto a screen nobody was reading.
+        """
+        e.on_alert_raised = lambda record: _record_alarm(e, record)
+        e.on_alert_cleared = lambda zone_id, t: _close_alarm(e, zone_id, t)
+
+    _wire(engine)
+    # A demonstration builds a fresh engine at request time, and it needs the
+    # same wiring or its alarms would appear on the map and reach nobody.
+    runtime.set_hook_installer(_wire)
 
     # A crash during an incident leaves paid priority sessions running with
     # nothing that remembers their ids.
@@ -207,6 +229,7 @@ app.add_middleware(
 
 app.include_router(webhook_router)
 app.include_router(auth_router)
+app.include_router(demo_router)
 app.include_router(state_router)
 
 

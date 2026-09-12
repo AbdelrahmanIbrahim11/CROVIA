@@ -27,6 +27,37 @@ _engine: Engine | None = None
 twin_mode: bool = False
 _twin = None
 
+# A demonstration run, started on request and independent of how the service
+# booted.
+#
+# It exists because the two things a visitor needs to see cannot both be true
+# at once: a service wired to Nokia proves the integration and shows a
+# permanently calm city, because Nokia's test devices never move; a service
+# wired to the simulated city shows a crowd and talks to nobody. Rather than
+# choose at deploy time and leave a judge looking at whichever half they did
+# not want, either can be asked for.
+#
+# While a demonstration is running it replaces what every screen reads, so the
+# map, the alarms and the warnings are all the simulated city's - and stopping
+# it hands everything back.
+_demo_engine: Engine | None = None
+_demo_twin = None
+_demo_started_at: float | None = None
+
+# How an engine gets wired to the rest of the system: saving alarms, warning
+# people, giving responders priority. Registered once at startup and applied to
+# every engine built afterwards.
+#
+# Without this a demonstration produced alarms that appeared on the map and
+# nothing else - no incident written, nobody warned - because the hooks had
+# been attached to the engine the service booted with and never moved.
+_install_hooks = None
+
+
+def set_hook_installer(fn) -> None:
+    global _install_hooks
+    _install_hooks = fn
+
 
 def build_engine() -> Engine:
     """
@@ -117,6 +148,11 @@ def _build_twin_engine(budget: Budget) -> Engine:
     return engine
 
 
+def _active_twin():
+    """The twin the loop should advance: the demonstration's, or the booted one."""
+    return _demo_twin if _demo_twin is not None else _twin
+
+
 def step_twin(seconds: float) -> None:
     """
     Advance the simulated world and deliver its notifications.
@@ -126,14 +162,15 @@ def step_twin(seconds: float) -> None:
     watching almost nothing. The engine is unaffected: it still sees events in
     the order and spacing the twin produces.
     """
-    if _twin is None:
+    twin = _active_twin()
+    if twin is None:
         return
     engine = get_engine()
-    steps = max(1, int(seconds / _twin.dt))
+    steps = max(1, int(seconds / twin.dt))
     for _ in range(steps):
-        _twin.step()
-    engine.now = _twin.t
-    for ev in engine.client.tick(_twin.t):
+        twin.step()
+    engine.now = twin.t
+    for ev in engine.client.tick(twin.t):
         if ev["type"] == "congestion":
             engine.on_congestion(ev["subscriptionId"], ev["congestionLevel"],
                                  ev["confidenceLevel"])
@@ -151,14 +188,16 @@ def engine_now() -> float | None:
     so every cadence comparison measured a gap of decades and no zone was ever
     due to be counted.
     """
-    return None if _twin is None else _twin.t
+    twin = _active_twin()
+    return None if twin is None else twin.t
 
 
 def twin_truth() -> dict | None:
     """Ground truth, for the demo view only. The engine never reads this."""
-    if _twin is None:
+    _t = _active_twin()
+    if _t is None:
         return None
-    snap = _twin.history[-1] if _twin.history else None
+    snap = _t.history[-1] if _t.history else None
     zones = {}
     for z in city.zones:
         # A zone an operator drew after the twin was built has no simulated
@@ -170,17 +209,91 @@ def twin_truth() -> dict | None:
             zones[z] = {"true_people": None, "true_density": None,
                         "simulated": False}
             continue
-        zones[z] = {"true_people": _twin.people_in_zone(z),
+        zones[z] = {"true_people": _t.people_in_zone(z),
                     "true_density": round(snap["zones"][z]["worst_density"], 2),
                     "simulated": True}
     return {"t": _twin.t, "zones": zones}
 
 
 def get_engine() -> Engine:
+    """
+    The engine every screen reads.
+
+    A running demonstration takes precedence, so nothing downstream has to know
+    a demonstration exists - the map, the warnings and the incident list all
+    follow automatically.
+    """
     global _engine
+    if _demo_engine is not None:
+        return _demo_engine
     if _engine is None:
         _engine = build_engine()
     return _engine
+
+
+def demo_running() -> bool:
+    return _demo_engine is not None
+
+
+def start_demo(zone: str | None = None, attendees: int | None = None,
+               minutes: float | None = None) -> dict:
+    """
+    Begin a fresh simulated event.
+
+    Always fresh. Showing whatever state the server happened to be in is how a
+    visitor arrives after the crowd has dispersed and concludes that nothing
+    works, so every request starts the story from the beginning.
+    """
+    global _demo_engine, _demo_twin, _demo_started_at
+    import time as _time
+
+    stop_demo()
+    if zone:
+        os.environ["CROVIA_TWIN_ZONE"] = zone
+    if attendees:
+        os.environ["CROVIA_TWIN_ATTENDEES"] = str(attendees)
+    if minutes:
+        os.environ["CROVIA_TWIN_MINUTES"] = str(minutes)
+
+    budget = Budget(per_hour=int(os.getenv("BUDGET_PER_HOUR", "6000")))
+    _demo_engine = _build_twin_engine(budget)
+    _demo_twin = _twin
+    if _install_hooks is not None:
+        _install_hooks(_demo_engine)
+    _demo_started_at = _time.time()
+    logger.warning("demonstration started - simulated crowds, not real network data")
+    return demo_status()
+
+
+def stop_demo() -> dict:
+    """Hand every screen back to the real engine."""
+    global _demo_engine, _demo_twin, _demo_started_at
+    was = _demo_engine is not None
+    _demo_engine = None
+    _demo_twin = None
+    _demo_started_at = None
+    if was:
+        logger.info("demonstration stopped - back to the live network")
+    return {"running": False, "stopped": was}
+
+
+def demo_status() -> dict:
+    import time as _time
+
+    if _demo_engine is None:
+        return {"running": False,
+                "note": "nothing is simulated; the service is using its real source"}
+    z = os.getenv("CROVIA_TWIN_ZONE", "zone_stadium_north_concourse")
+    return {
+        "running": True,
+        "zone": z,
+        "attendees": int(os.getenv("CROVIA_TWIN_ATTENDEES", "12000")),
+        "release_minutes": float(os.getenv("CROVIA_TWIN_MINUTES", "12")),
+        "simulated_seconds": round(_demo_twin.t, 1) if _demo_twin else 0,
+        "real_seconds": round(_time.time() - _demo_started_at, 1) if _demo_started_at else 0,
+        "speed": float(os.getenv("CROVIA_TWIN_SPEED", "12")),
+        "alerts": len(_demo_engine.alerts),
+    }
 
 
 def reset_engine() -> None:

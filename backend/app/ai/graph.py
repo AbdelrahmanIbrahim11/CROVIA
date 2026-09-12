@@ -85,11 +85,18 @@ class DeterministicPolicy:
 
     def decide(self, engine, snapshot: dict) -> list[Decision]:
         out: list[Decision] = []
-        shares = engine._congestion_signal()
+        shares = engine._congestion_signal()  # congestion percentage from nokia
+
+        # this is the case where all areas are congested
         if shares and all(v > 0.35 for v in shares.values()) and len(shares) > 1:
-            return [Decision("-", "suppress",
-                             "Every district is elevated together, so this is a network "
-                             "fault rather than a crowd. Spending nothing.")]
+            return [
+                Decision(
+                    "-",
+                    "suppress",
+                    "Every district is elevated together, so this is a network "
+                    "fault rather than a crowd. Spending nothing.",
+                )
+            ]
 
         baseline = min(shares.values()) if shares else 0.0
         for zone_id, z in city.zones.items():
@@ -102,19 +109,31 @@ class DeterministicPolicy:
                 continue
 
             if len(zs.counts) < 2:
-                out.append(Decision(
-                    zone_id, "verify_and_filter",
-                    f"{z.label} looks unusual against the calmest district, and there is "
-                    f"no count yet, so counting is the cheapest way to find out."))
+                out.append(
+                    Decision(
+                        zone_id,
+                        "verify_and_filter",
+                        f"{z.label} looks unusual against the calmest district, and there is "
+                        f"no count yet, so counting is the cheapest way to find out.",
+                    )
+                )
             elif rate >= 0.45 * capacity:
-                out.append(Decision(
-                    zone_id, "retrieve_locations_batch",
-                    f"{z.label} is filling at about {rate:,.0f} people a minute against a "
-                    f"link that passes {capacity:,.0f}. Worth paying to locate."))
+                out.append(
+                    Decision(
+                        zone_id,
+                        "retrieve_locations_batch",
+                        f"{z.label} is filling at about {rate:,.0f} people a minute against a "
+                        f"link that passes {capacity:,.0f}. Worth paying to locate.",
+                    )
+                )
             else:
-                out.append(Decision(
-                    zone_id, "verify_and_filter",
-                    f"{z.label} is being watched; another count keeps the rate current."))
+                out.append(
+                    Decision(
+                        zone_id,
+                        "verify_and_filter",
+                        f"{z.label} is being watched; another count keeps the rate current.",
+                    )
+                )
         return out
 
 
@@ -131,6 +150,7 @@ class ModelPolicy:
 
     def __init__(self, model_name: str | None = None) -> None:
         from langchain_groq import ChatGroq
+
         # The notebook passed a Groq model name to Google's client, which cannot
         # work: llama3-70b-8192 is served by Groq, not by Gemini.
         # The default is what the project's Groq account actually serves. Groq
@@ -145,14 +165,19 @@ class ModelPolicy:
 
     def decide(self, engine, snapshot: dict) -> list[Decision]:
         from langchain_core.messages import HumanMessage, SystemMessage
+
         try:
             situation = _describe(engine, snapshot)
-            reply = self.model.invoke([
-                SystemMessage(content=SYSTEM_PROMPT),
-                HumanMessage(content=situation + "\n\nWhich single zone should be looked at "
-                                                 "next, which tool should be called, and why? "
-                                                 "Answer as: ZONE | TOOL | one sentence."),
-            ])
+            reply = self.model.invoke(
+                [
+                    SystemMessage(content=SYSTEM_PROMPT),
+                    HumanMessage(
+                        content=situation + "\n\nWhich single zone should be looked at "
+                        "next, which tool should be called, and why? "
+                        "Answer as: ZONE | TOOL | one sentence."
+                    ),
+                ]
+            )
             text = (reply.content or "").strip()
             parts = [p.strip() for p in text.split("|")]
             if len(parts) >= 3 and parts[0] in city.zones:
@@ -168,7 +193,9 @@ def _describe(engine, snapshot: dict) -> str:
     shares = engine._congestion_signal()
     lines = ["Districts and the share of monitored devices reporting congestion:"]
     for d, v in shares.items():
-        lines.append(f"  {city.districts[d].short}: {v:.0%} ({snapshot['districts'].get(d)})")
+        lines.append(
+            f"  {city.districts[d].short}: {v:.0%} ({snapshot['districts'].get(d)})"
+        )
     lines.append("\nZones:")
     for zid, z in city.zones.items():
         zs = engine.zones[zid]
@@ -176,8 +203,11 @@ def _describe(engine, snapshot: dict) -> str:
         lines.append(
             f"  {zid}: narrowest link {city.bottleneck_of(zid).width_m:.0f} m "
             f"(passes {city.zone_capacity_per_min(zid):,.0f}/min), "
-            f"about {people:,} people, filling {zs.rate_per_min():+,.0f}/min")
-    lines.append(f"\nBudget left this hour: {engine.budget.available(engine.now)} calls.")
+            f"about {people:,} people, filling {zs.rate_per_min():+,.0f}/min"
+        )
+    lines.append(
+        f"\nBudget left this hour: {engine.budget.available(engine.now)} calls."
+    )
     return "\n".join(lines)
 
 
@@ -210,13 +240,21 @@ def run_once(engine) -> list[dict]:
     for d in policy.decide(engine, snapshot)[:3]:
         if d.action == "suppress":
             engine.log("agent", d.reasoning, by=policy.name, action="suppress")
-            results.append({"zone": d.zone_id, "action": d.action,
-                            "reasoning": d.reasoning, "by": policy.name})
+            results.append(
+                {
+                    "zone": d.zone_id,
+                    "action": d.action,
+                    "reasoning": d.reasoning,
+                    "by": policy.name,
+                }
+            )
             continue
 
-        fn = {"arm_chokepoints": T.arm_chokepoints,
-              "verify_and_filter": T.verify_and_filter,
-              "retrieve_locations_batch": T.retrieve_locations_batch}.get(d.action)
+        fn = {
+            "arm_chokepoints": T.arm_chokepoints,
+            "verify_and_filter": T.verify_and_filter,
+            "retrieve_locations_batch": T.retrieve_locations_batch,
+        }.get(d.action)
         if fn is None:
             continue
 
@@ -225,9 +263,22 @@ def run_once(engine) -> list[dict]:
         d.spent = engine.ledger.total - before
         verdict = T.judge(engine, d.zone_id)
 
-        engine.log("agent", f"{d.reasoning} [{d.action}, {d.spent} calls]",
-                   by=policy.name, action=d.action, zone=d.zone_id)
-        results.append({"zone": d.zone_id, "action": d.action, "reasoning": d.reasoning,
-                        "by": policy.name, "calls_spent": d.spent,
-                        "result": d.result, "verdict": verdict})
+        engine.log(
+            "agent",
+            f"{d.reasoning} [{d.action}, {d.spent} calls]",
+            by=policy.name,
+            action=d.action,
+            zone=d.zone_id,
+        )
+        results.append(
+            {
+                "zone": d.zone_id,
+                "action": d.action,
+                "reasoning": d.reasoning,
+                "by": policy.name,
+                "calls_spent": d.spent,
+                "result": d.result,
+                "verdict": verdict,
+            }
+        )
     return results

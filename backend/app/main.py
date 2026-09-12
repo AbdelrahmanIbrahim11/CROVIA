@@ -85,7 +85,8 @@ async def _engine_loop() -> None:
             if now is None:
                 engine.tick()
             else:
-                speed = float(os.getenv("CROVIA_TWIN_SPEED", "1"))
+                speed = float(os.getenv("CROVIA_TWIN_SPEED",
+                                        runtime.DEMO_SPEED_DEFAULT))
                 for _ in range(max(1, int(TICK_SECONDS * speed / step_s))):
                     step_twin(step_s)
                     engine.tick(engine_now())

@@ -84,19 +84,36 @@ def enrol(db: Session, phone: str, role: str = SENTINEL,
 
 
 def auto_enrol_users(db: Session, panel_size: int = 400,
-                     sentinels_per_district: int = 60,
-                     districts: list[str] | None = None, seed: int = 7) -> dict:
+                     pool_size: int = 500, seed: int = 7,
+                     **_ignored) -> dict:
     """
-    Turn consenting users into a sentinel fleet and a citywide panel.
+    Turn consenting users into a sentinel pool and a citywide panel.
 
-    The two groups are chosen differently on purpose. Sentinels are picked per
-    district and can be boosted where an event is expected, which is what makes
-    them useful for locating a crowd. The panel is drawn uniformly across every
-    consenting user regardless of district, because its share of the population
-    has to be known exactly for the headcount to be unbiased. Using one group
-    for both jobs under-counts an event crowd by two to three times.
+    NO DISTRICT IS ASSIGNED HERE, and that is the point of this version.
+
+    The previous one dealt the remaining users into four piles by position in a
+    shuffled list - the first sixty became "stadium", the next sixty
+    "foxhills", and so on. Nothing had checked whether any of them were
+    anywhere near those places. That guess was then written down and treated as
+    fact by everything downstream: congestion notifications were attributed to
+    it, and the share that decides which district deserves paid attention was
+    computed from it.
+
+    Now the network decides. Every sentinel is subscribed to all four district
+    circles and reports which one it is really in, so the district lists are
+    observed rather than invented.
+
+    The two groups still differ on purpose. The panel is a uniform random
+    sample used for counting, and its share of the population has to be known
+    exactly for the headcount to be unbiased. The sentinel pool carries the
+    congestion and geofence subscriptions. Using one group for both jobs
+    under-counts an event crowd by two to three times.
+
+    `pool_size` is how many sentinels to carry. It has to be large enough that
+    the emptiest district still holds enough phones to be trusted - see
+    MIN_FLEET in the engine - because people are not spread evenly across a
+    city and we no longer get to pretend they are.
     """
-    districts = districts or []
     rng = random.Random(seed)
 
     rows = (db.query(device_consent, normal_user)
@@ -116,16 +133,14 @@ def auto_enrol_users(db: Session, panel_size: int = 400,
     for phone, _ in panel:
         enrol(db, phone, PANEL)
 
-    n_sent = 0
-    if districts:
-        per = max(1, sentinels_per_district)
-        i = 0
-        for d in districts:
-            for phone, _ in rest[i:i + per]:
-                enrol(db, phone, SENTINEL, district_id=d)
-                n_sent += 1
-            i += per
-    return {"sentinels": n_sent, "panel": len(panel), "consenting": len(people)}
+    # Sentinels get no district. The geofences placed in subscribe_device are
+    # what put them somewhere, once the network has answered.
+    sentinels = rest[:pool_size]
+    for phone, _ in sentinels:
+        enrol(db, phone, SENTINEL)
+
+    return {"sentinels": len(sentinels), "panel": len(panel),
+            "consenting": len(people)}
 
 
 def load_into_registry(db: Session, registry: DeviceRegistry) -> dict:
@@ -153,20 +168,27 @@ def load_into_registry(db: Session, registry: DeviceRegistry) -> dict:
     return {"sentinels": n_sent, "panel": n_panel, "consenting": len(consents)}
 
 
-def subscribe_device(db: Session, engine, phone: str, district_id: str | None) -> dict:
+def subscribe_device(db: Session, engine, phone: str,
+                     _district_id: str | None = None) -> dict:
     """
     Create the CAMARA subscriptions for one device and remember their ids.
 
-    Two subscriptions per device:
+    Five subscriptions per device:
 
       CONGESTION  the always-on signal. Its payload carries no location and no
                   device id, so on its own it can only say that something is
                   happening somewhere.
 
-      DISTRICT    a geofence on the district circle, with initial_event set.
-                  This is what gives congestion an address: the initial event
-                  reports containment immediately and for free, and the
-                  enter/leave events keep it current afterwards.
+      DISTRICT    a geofence on EVERY district circle, each with initial_event
+                  set. These are what give congestion an address. The network
+                  answers immediately for the one circle the phone is inside
+                  and says nothing about the rest, so the device places itself.
+
+    The district argument is accepted and ignored. It used to select the single
+    circle to watch, which meant the subscription could only ever confirm
+    whichever district had been guessed for this phone - never contradict it.
+    A wrong guess produced silence, and silence changed nothing, so the guess
+    stood for ever.
 
     Subscription ids are written to the database because they are the only way
     to tear these down later. Forgetting them leaves the subscriptions alive at
@@ -203,27 +225,43 @@ def subscribe_device(db: Session, engine, phone: str, district_id: str | None) -
         # created - so the operator was billed for it and nothing recorded it.
         return {"error": f"congestion subscription failed: {type(exc).__name__}: {exc}"}
 
-    if district_id and district_id in city.districts:
-        d = city.districts[district_id]
+    # A geofence on EVERY district, not on one guessed district.
+    #
+    # Each subscription carries initial_event, so the network answers straight
+    # away for the circle the phone is actually inside and stays silent for the
+    # other three. That one answer places the device. Asking about all four is
+    # what removes the need to know where it is beforehand - and a phone that
+    # answers nowhere is left in no district, which is the truthful result
+    # rather than a guess.
+    #
+    # Only area-entered is subscribed. Moving between districts is already
+    # handled, because placing a device in a new district removes it from its
+    # previous one. Subscribing to area-left as well would double the cost, as
+    # CAMARA allows one event type per subscription.
+    placed_in: str | None = None
+    geo_failures: list[str] = []
+    for did, d in city.districts.items():
         try:
             gsub, evt = engine.client.create_geofence_subscription(
-                phone, district_id, Area(d.center.lat, d.center.lon, d.radius_m),
+                phone, did, Area(d.center.lat, d.center.lon, d.radius_m),
                 f"{sink}/geofencing/{hashed}", 7 * 86400, initial_event=True)
-            engine.registry.bind_subscription(gsub, hashed, "district", district_id)
+            engine.registry.bind_subscription(gsub, hashed, "district", did)
             db.add(subscription_record(subscription_id=gsub, hashed_id=hashed,
-                                       kind="district", area_id=district_id))
+                                       kind="district", area_id=did))
             made.append(gsub)
-            # The free part: containment is reported straight away.
+            # The built-in stand-in client answers inline; the real network
+            # answers later on the webhook. Both paths end in the same place.
             if evt and evt.get("type") == "area-entered":
-                engine.registry.place(hashed, district_id, engine.now)
+                engine.registry.place(hashed, did, engine.now)
+                placed_in = did
         except Exception as exc:
             # Broad for the same reason as above: the Nokia SDK raises its own
-            # exception types. The congestion subscription that already
-            # succeeded is committed and reported, rather than being lost
-            # because a later call failed.
-            db.commit()
-            return {"subscriptions": made,
-                    "warning": f"geofence failed: {type(exc).__name__}: {exc}"}
+            # exception types. One district failing must not discard the
+            # subscriptions that already succeeded and are already billed.
+            geo_failures.append(f"{did}: {type(exc).__name__}: {exc}")
 
     db.commit()
-    return {"subscriptions": made}
+    out: dict = {"subscriptions": made, "placed_in": placed_in}
+    if geo_failures:
+        out["warning"] = "; ".join(geo_failures)[:400]
+    return out

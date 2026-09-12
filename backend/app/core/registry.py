@@ -72,17 +72,28 @@ class DeviceRegistry:
 
     # ---- enrolment -------------------------------------------------------
 
-    def add_sentinel(self, phone: str, declared_district: str | None = None) -> str:
+    def add_sentinel(self, phone: str, _declared_district: str | None = None) -> str:
+        """
+        Start watching a phone. It joins NO district.
+
+        The district argument is accepted and ignored, so old callers still
+        work. It used to place the device immediately, and that single line was
+        the whole problem: the district came from dealing a shuffled list into
+        four piles, so a phone was recorded as being somewhere nobody had
+        checked. Every congestion notification was then attributed to that
+        invented place, and the share that decides where to spend money was
+        computed against it.
+
+        Only a geofence notification from the network may place a device now.
+        Until one arrives the phone is in no district, which is the honest
+        state: we have not been told where it is.
+        """
         h = self.vault.enroll(phone)
         self.sentinels.add(h)
-        if declared_district:
-            # A signup hint, free but sometimes wrong. The geofence's initial
-            # event corrects it at no extra cost.
-            self.place(h, declared_district, 0.0)
         return h
 
-    def add_panel(self, phone: str, declared_district: str | None = None) -> str:
-        h = self.add_sentinel(phone, declared_district)
+    def add_panel(self, phone: str, _declared_district: str | None = None) -> str:
+        h = self.add_sentinel(phone)
         self.panel.add(h)
         return h
 

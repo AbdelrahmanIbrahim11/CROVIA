@@ -61,7 +61,7 @@ class DeviceRegistry:
     """
 
     vault: Vault = field(default_factory=Vault)
-    sub_device: dict[str, str] = field(default_factory=dict)       # sub id -> hashed
+    sub_device: dict[str, str] = field(default_factory=dict)  # sub id -> hashed
     sub_kind: dict[str, str] = field(default_factory=dict)
     sub_area: dict[str, str] = field(default_factory=dict)
     device_district: dict[str, str] = field(default_factory=dict)  # hashed -> district
@@ -86,7 +86,9 @@ class DeviceRegistry:
         self.panel.add(h)
         return h
 
-    def bind_subscription(self, sub_id: str, hashed: str, kind: str, area_id: str) -> None:
+    def bind_subscription(
+        self, sub_id: str, hashed: str, kind: str, area_id: str
+    ) -> None:
         self.sub_device[sub_id] = hashed
         self.sub_kind[sub_id] = kind
         self.sub_area[sub_id] = area_id

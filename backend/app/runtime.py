@@ -310,6 +310,11 @@ def step_twin(seconds: float) -> None:
     if twin is None:
         return
     engine = get_engine()
+    # Belt and braces: only a simulated client can produce simulated events.
+    # If these two ever disagree again, detection must keep running rather than
+    # take the whole loop down with it.
+    if not hasattr(engine.client, "tick"):
+        return
     steps = max(1, int(seconds / twin.dt))
     for _ in range(steps):
         twin.step()
@@ -422,12 +427,24 @@ def start_demo(zone: str | None = None, attendees: int | None = None,
 
 def stop_demo() -> dict:
     """Hand every screen back to the real engine."""
-    global _demo_engine, _demo_twin, _demo_started_at, _scenario
+    global _demo_engine, _demo_twin, _demo_started_at, _scenario, _twin
     was = _demo_engine is not None
     _demo_engine = None
     _demo_twin = None
     _scenario = None
     _demo_started_at = None
+    # Forget the simulated world as well, unless the SERVICE itself was booted
+    # against one.
+    #
+    # Building a demonstration leaves a twin in this module, and stopping the
+    # demonstration used to leave it there. The background loop asks "is there
+    # a simulated clock?" to decide how to advance, so it kept answering yes
+    # long after the demonstration ended - then tried to pull simulated events
+    # out of the real Nokia client, which has no such thing, and every single
+    # cycle died with AttributeError. Detection stopped completely and only a
+    # restart brought it back.
+    if not twin_mode:
+        _twin = None
     if was:
         logger.info("demonstration stopped - back to the live network")
     return {"running": False, "stopped": was}

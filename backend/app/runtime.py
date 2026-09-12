@@ -47,16 +47,20 @@ _demo_source: str = "twin"
 
 # How much faster simulated time runs than real time, during a demonstration.
 #
-# Six rather than one because a demonstration is watched by a person standing
-# there: at real speed the crowd takes about eight minutes to become dangerous,
-# which is long enough that most people conclude it is broken and stop looking.
-# At six the whole evening plays out in three or four minutes and the alarm
-# arrives after roughly a minute.
+# Twelve rather than one because a demonstration is watched by a person
+# standing there. Measured end to end: at real speed the crowd takes about
+# eight minutes to become dangerous, which is long enough that most people
+# decide it is broken and stop looking. At twelve the alarm arrives after
+# thirty seconds, the all-clear after two minutes, and the crowd has gone by
+# five - fast enough to hold attention, and still slow enough to watch the
+# queue BUILD, which is the entire point. Faster was tried: at twenty the
+# alarm fires at twelve seconds, before anyone has finished reading the
+# screen, and it reads as a jump rather than something forming.
 #
 # It affects nothing outside a demonstration - the live service has no
 # simulated clock to accelerate - and it is a default in code rather than a
 # dashboard setting so that a deployment cannot silently lose it.
-DEMO_SPEED_DEFAULT = "6"
+DEMO_SPEED_DEFAULT = "12"
 _scenario: dict | None = None
 
 # How an engine gets wired to the rest of the system: saving alarms, warning

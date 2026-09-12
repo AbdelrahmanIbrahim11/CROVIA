@@ -48,6 +48,9 @@ class ZoneState:
     unresolved_since: float | None = None
     alerted: bool = False
     next_check_at: float = 0.0
+    # What this zone asked for on the cycle it was funded, so the wait can
+    # honour the zone's own urgency rather than its district's stale state.
+    next_interval: float | None = None
     consecutive_high: int = 0
 
     # How far back the fill rate looks. Long enough to be steady, short enough
@@ -336,12 +339,53 @@ class Engine:
             for h in [h for h, t in st.high_devices.items() if t < cut]:
                 st.high_devices.pop(h, None)
 
+    # Below this many devices a district's share is noise, not a measurement.
+    #
+    # The share is a fraction of the district's fleet, so a small fleet makes
+    # every single device enormous: with four devices one of them reporting
+    # congestion is a share of 0.25, which clears the strongest trigger on its
+    # own. Someone walking past a busy cafe would fund a paid count.
+    #
+    # It also protects the comparison. The baseline is the QUIETEST district,
+    # and a district holding nobody reported a share of exactly zero - so an
+    # empty district silently became the yardstick the whole city was measured
+    # against.
+    MIN_FLEET = 25
+
     def _congestion_signal(self) -> dict[str, float]:
-        """Share of each district's fleet reporting congestion."""
+        """
+        Share of each district's fleet reporting congestion.
+
+        Only districts with enough devices to be trusted appear here. A thin or
+        empty district is absent rather than zero, because zero is a claim -
+        "nothing is happening there" - and we have not measured anything.
+        """
         out = {}
         for did, st in self.districts.items():
-            fleet = max(len(self.registry.fleet(did)), 1)
+            fleet = len(self.registry.fleet(did))
+            if fleet < self.MIN_FLEET:
+                continue
             out[did] = len(st.high_devices) / fleet
+        return out
+
+    def coverage(self) -> dict[str, dict]:
+        """
+        How many devices are watching each district, and whether that is enough.
+
+        Reported so an operator is told "we cannot see the Marina" instead of
+        being shown a calm-looking Marina. A district nobody is watching is the
+        most dangerous thing to paint green.
+        """
+        out = {}
+        for did in self.districts:
+            n = len(self.registry.fleet(did))
+            out[did] = {
+                "devices": n,
+                "trusted": n >= self.MIN_FLEET,
+                "state": ("watched" if n >= self.MIN_FLEET
+                          else "no coverage" if n == 0 else "thin coverage"),
+                "minimum": self.MIN_FLEET,
+            }
         return out
 
     # ---- paid evidence -------------------------------------------------
@@ -421,6 +465,10 @@ class Engine:
         scheduled = self._scheduled_zones()
         shares = self._congestion_signal()
         vals = sorted(shares.values())
+        # Districts absent from `shares` are the untrusted ones. They cannot
+        # set the baseline and cannot ask for money, but they are logged once
+        # so the gap is visible rather than silent.
+        untrusted = [d for d in self.districts if d not in shares]
         # Compare against the QUIETEST district, not the middle or the quartile.
         #
         # The median works while exactly one district is busy, and the lower
@@ -439,12 +487,16 @@ class Engine:
         # three-crowd scenario detected nothing at all. Demanding all four means
         # a real fault costs a little counting before it is dismissed, which is
         # much cheaper than missing three simultaneous crushes.
-        city_wide = all(v > 0.35 for v in shares.values()) and len(shares) > 1
+        city_wide = (bool(shares) and all(v > 0.35 for v in shares.values())
+                     and len(shares) > 1)
 
         # 1. Which zones deserve paid attention?
         wanted: list[Request] = []
         for zid, zs in self.zones.items():
             did = zs.district_id
+            if did not in shares:
+                # Not enough devices there to justify spending on a guess.
+                continue
             share = shares.get(did, 0.0)
             interesting = (
                 # A known event beats every measured signal, and costs nothing.
@@ -464,11 +516,13 @@ class Engine:
             # Respect this zone's own cadence.
             state = ALERT if zs.alerted else self.districts[did].state
             interval, sample = self.CADENCE.get(state, (300.0, 22))
+            zs.next_interval = interval
             # Congestion is free and arrives early. Treating it as a reason to
             # look more closely — rather than waiting until a rate has already
             # been measured — is what buys the warning time.
             if state == IDLE and (zid in scheduled or zs.rate_per_min() > 0 or share >= 0.20):
                 interval, sample = self.CADENCE[WATCHING]
+                zs.next_interval = interval
             if self.now < zs.next_check_at:
                 continue
 
@@ -481,6 +535,11 @@ class Engine:
                 seconds_to_critical=last.seconds_to_critical if last else None,
             ))
 
+        if untrusted:
+            self.log("coverage",
+                     f"not enough devices to judge {', '.join(d[9:] for d in untrusted)} "
+                     f"- reported as no coverage, not as calm",
+                     districts=untrusted)
         if city_wide:
             self.log("suppress", "every district is elevated together - that is a network "
                                  "event, not a crowd. Not spending.")
@@ -511,8 +570,20 @@ class Engine:
             people, inside, checked = self.count_zone(req.zone_id, allowed)
             if checked == 0:
                 continue
+            # Use the interval this zone actually asked for, not the one its
+            # district's state implies.
+            #
+            # The two disagree exactly when it matters. A zone that looks busy
+            # raises its own cadence to 90 s, but the district is still IDLE on
+            # the cycle that discovers it - so the next check was being booked
+            # 300 s away. Worse, the district's state is only updated at the
+            # END of this loop, so the value read here is always one cycle
+            # stale. The first three counts landed five minutes apart during a
+            # situation the engine had already judged unusual, and most of the
+            # available warning time was spent waiting.
             state_now = ALERT if zs.alerted else self.districts[req.district_id].state
-            zs.next_check_at = self.now + self.CADENCE.get(state_now, (300.0, 18))[0]
+            by_state = self.CADENCE.get(state_now, (300.0, 18))[0]
+            zs.next_check_at = self.now + min(zs.next_interval or by_state, by_state)
             zs.unresolved_since = None
             zs.counts.append((self.now, people))
             zs.last_checked = self.now

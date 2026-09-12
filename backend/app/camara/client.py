@@ -339,7 +339,13 @@ class NokiaClient:
         self.ledger.record(TIER_QOD)
         kwargs: dict = {
             "device": {"phone_number": phone},
-            "application_server": {"ipv_4_address": server_ip},
+            # camelCase, like sink_credential below and for the same reason: the
+            # SDK converts only the fields it declares and passes nested dicts
+            # through exactly as written. Spelled ipv_4_address - which is what
+            # the SDK's own type hint suggests - the live service answers 422
+            # "Application IP address is missing" while echoing the address back
+            # in the error, so the request looks correct and is not.
+            "application_server": {"ipv4Address": server_ip},
             "qos_profile": profile,
             "duration": duration_s,
         }

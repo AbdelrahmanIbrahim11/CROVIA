@@ -33,6 +33,7 @@ The system uses brilliant math to avoid bankrupting the telecom API budget while
 
 ## 4. Deterministic Safety: The "No AI" Guarantee
 When lives are on the line, the final decision cannot be left to an LLM hallucination. The `danger.py` rules engine operates on pure math.
-*   **Inferred Density over Measured Density**: GPS error is massive (150m-400m). The engine abandons raw coordinates and instead uses the physical width of the street (from the blueprint) against the massive flow of arriving people. It *infers* the crush rather than trying to measure the impossible.
+*   **Inferred Density over Measured Density**: GPS error is massive (150m-400m). The engine abandons raw coordinates for the initial trigger and instead uses the physical width of the street against the massive flow of arriving people. It *infers* the crush rather than trying to measure the impossible.
 *   **The Earliest Warning**: The system triggers if `Arrivals > Street Capacity`. This allows operators to dispatch police *before* the crowd is actually trapped in a crush.
+*   **The Position Fixer (`locate_crowd`)**: When an alarm *does* fire, the engine spends extra API budget exactly once to buy raw GPS coordinates. It calculates the median center of the crowd to confirm if they are actually crushed against the bottleneck, or just safely spread out across a wider part of the zone. This provides crucial context to the operator without ever overriding the mathematical alarm.
 

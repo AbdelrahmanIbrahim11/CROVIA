@@ -17,6 +17,9 @@ through a test client, on a temporary database, with no network and no server.
 
 from __future__ import annotations
 
+import base64
+import json
+
 import os
 import sys
 import tempfile
@@ -119,10 +122,29 @@ def test_a_token_says_who_you_are():
 
 
 def test_a_tampered_token_is_refused():
-    """The role travels inside the token, so changing it must break the signature."""
+    """
+    The role travels inside the token, so changing it must break the signature.
+
+    Tampering targets the payload rather than the token's last character. That
+    earlier version failed about one run in fifteen for a reason that has
+    nothing to do with security: the signature is base64url, and its final
+    character carries bits that are not all used, so a share of single-character
+    edits decode to the very same signature bytes and the token is legitimately
+    still valid. A test that cries failure 6% of the time teaches people to
+    re-run it, which is how a real failure gets waved through.
+    """
     token, _ = create_access_token(user_id="abc", role="normal",
                                    username="P", email="p@example.com")
-    assert decode_token(token[:-1] + ("X" if token[-1] != "X" else "Y")) is None
+    header, payload, signature = token.split(".")
+
+    # Claim a higher role. This is the attack the signature exists to stop.
+    forged = base64.urlsafe_b64encode(
+        json.dumps({**json.loads(base64.urlsafe_b64decode(payload + "==")),
+                    "role": "authority"}).encode()).decode().rstrip("=")
+    assert decode_token(f"{header}.{forged}.{signature}") is None
+
+    # A signature that is the right shape and the wrong value.
+    assert decode_token(f"{header}.{payload}.{'A' * len(signature)}") is None
     assert decode_token("not.a.token") is None
     assert decode_token("") is None
 

@@ -863,8 +863,27 @@ class Engine:
             else:
                 if zs.alerted and rate <= 0:
                     zs.alerted = False
-                    self.log("standdown", f"{req.zone_id[5:]} is clearing", zone=req.zone_id)
-                    self._notify(self.on_alert_cleared, req.zone_id, self.now)
+                    # Why it ended, in the same numbers that made it start.
+                    #
+                    # An alarm that simply vanishes teaches people to distrust
+                    # the next one - they never learn whether the danger passed
+                    # or the system gave up. The figures that raised it are the
+                    # figures that should retire it.
+                    why = {
+                        "people": round(v.people_low / 0.7) if v.people_low else 0,
+                        "falling_by": round(abs(rate)),
+                        "capacity_per_min": round(capacity),
+                        "width_m": v.hazard_width_m,
+                        "segment_label": v.hazard_label,
+                    }
+                    self.log("standdown",
+                             f"{v.hazard_label} is clearing: about "
+                             f"{why['people']:,} people left and the number is "
+                             f"falling by {why['falling_by']:,}/min, so the "
+                             f"{v.hazard_width_m:.0f} m link is passing people "
+                             f"faster than they arrive",
+                             zone=req.zone_id, **why)
+                    self._notify(self.on_alert_cleared, req.zone_id, self.now, why)
                 # The district stays in ALERT while ANY of its zones is alerted.
                 any_alerted = any(self.zones[z.id].alerted
                                   for z in self.city.zones_of(req.district_id))

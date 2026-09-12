@@ -177,7 +177,7 @@ def warn_people_near(db: Session, registry, record: dict,
 
 
 def all_clear(db: Session, incident_id, zone_id: str,
-              channel: str = "in_app") -> dict:
+              channel: str = "in_app", because: dict | None = None) -> dict:
     """
     Tell the people who were warned that the crowd has gone.
 
@@ -208,8 +208,27 @@ def all_clear(db: Session, incident_id, zone_id: str,
     zone = city.zones.get(zone_id)
     place = zone.label if zone is not None else "the area"
     title = f"{place} is clear"
-    body = ("The crowd there has dispersed and the route is moving normally "
-            "again. The earlier warning no longer applies.")
+    # Say WHY, with the same numbers that raised the alarm.
+    #
+    # "It is fine now" asks for trust. "About 4,000 people left and the number
+    # is falling by 900 a minute" gives a reason, and a person who was warned
+    # deserves to know whether the danger passed or the system stopped looking.
+    if because:
+        n = because.get("people") or 0
+        falling = because.get("falling_by") or 0
+        width = because.get("width_m") or 0
+        cap = because.get("capacity_per_min") or 0
+        left = (f"About {n:,} people are still in the area, but the number is "
+                f"falling by roughly {falling:,} a minute. "
+                if n and falling else "")
+        link = (f"The {width:.0f} m way out is now passing people faster than "
+                f"they arrive, up to about {cap:,} a minute. "
+                if width and cap else "")
+        body = (f"{left}{link}The crowd is dispersing on its own, so the "
+                f"earlier warning no longer applies.")
+    else:
+        body = ("The crowd there has dispersed and the route is moving normally "
+                "again. The earlier warning no longer applies.")
 
     transport = _transports.get(channel)
     tokens = push.tokens_for(db, recipients)

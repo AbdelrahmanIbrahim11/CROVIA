@@ -169,10 +169,41 @@ class Twin:
 
         self._move_ambient()
         seg_state = self._move_egress()
+        self._disperse_done()
         self.t += self.dt
         snap = self._snapshot(seg_state)
         self.history.append(snap)
         return snap
+
+    def _disperse_done(self) -> None:
+        """
+        People who have finished leaving walk away and go home.
+
+        Without this they reached the end of the route, were marked DONE, and
+        then stood perfectly still for ever - so a zone that had emptied in
+        every meaningful sense still reported eleven thousand people inside its
+        600 m circle an hour later. The map never went calm, the alarm kept
+        re-firing as the count wobbled, and a demonstration left running looked
+        like a city in permanent crisis.
+
+        Walking home is also simply what happens after a match.
+        """
+        done = np.where(self.mode == DONE)[0]
+        if done.size == 0:
+            return
+        dx = self.home_xy[done, 0] - self.x[done]
+        dy = self.home_xy[done, 1] - self.y[done]
+        d = np.hypot(dx, dy) + 1e-6
+        # A brisk walk away, faster than a stroll because people leaving an
+        # event move with purpose.
+        step = np.minimum(V_FREE * 1.6 * self.dt, d)
+        self.x[done] += dx / d * step
+        self.y[done] += dy / d * step
+        # Close enough to home to rejoin ordinary life, and stop being counted
+        # as part of the event at all.
+        home = done[d < 120.0]
+        if home.size:
+            self.mode[home] = AMBIENT
 
     def _move_ambient(self) -> None:
         amb = self.mode == AMBIENT
@@ -202,7 +233,20 @@ class Twin:
         if eg.size == 0:
             return state
         idx = self.seg[eg]
-        self.s[eg] += speed[idx] * self.dt
+        # Walking speed falls as a link fills, but never all the way to zero.
+        #
+        # Weidmann speed reaches 0 at jam density, and taken literally that
+        # froze a packed link solid: people stopped advancing, so nobody ever
+        # reached the far end, so nothing drained and the queue stayed put for
+        # ever. Measured over an hour of simulated time, ten thousand people
+        # were still trying to leave a ramp that should pass 648 a minute.
+        #
+        # Real crowds do not do that. Even at crush density people shuffle
+        # forward, and the front of the link keeps discharging while the
+        # congestion sits behind it. A floor of a tenth of a metre per second
+        # is slow enough to still be dangerous and fast enough to eventually
+        # clear, which is what an evening actually looks like.
+        self.s[eg] += np.maximum(speed[idx], 0.10) * self.dt
 
         at_end = self.s[eg] >= self.seg_len[idx]
         movers = eg[at_end]

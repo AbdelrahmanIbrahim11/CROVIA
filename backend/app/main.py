@@ -197,7 +197,8 @@ async def lifespan(app: FastAPI):
         finally:
             db.close()
 
-    def _close_alarm(eng, zone_id: str, _t: float) -> None:
+    def _close_alarm(eng, zone_id: str, _t: float,
+                     because: dict | None = None) -> None:
         db = next(getdb())
         try:
             row = incidents.open_row_for(db, zone_id)
@@ -209,7 +210,7 @@ async def lifespan(app: FastAPI):
                 # warning said "avoid this place" and nothing ever withdrew it,
                 # so it sat in the app looking live long after the crowd had
                 # gone. The alarm clearing is the only moment we know it ended.
-                cleared = warnings.all_clear(db, row.id, zone_id)
+                cleared = warnings.all_clear(db, row.id, zone_id, because=because)
                 if cleared.get("sent"):
                     eng.log("all_clear",
                             f"{cleared['sent']} people told that "
@@ -231,7 +232,8 @@ async def lifespan(app: FastAPI):
         trace onto a screen nobody was reading.
         """
         e.on_alert_raised = lambda record: _record_alarm(e, record)
-        e.on_alert_cleared = lambda zone_id, t: _close_alarm(e, zone_id, t)
+        e.on_alert_cleared = (lambda zone_id, t, because=None:
+                              _close_alarm(e, zone_id, t, because))
 
     _wire(engine)
     # A demonstration builds a fresh engine at request time, and it needs the

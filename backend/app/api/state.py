@@ -109,13 +109,22 @@ def get_state(_: dict = Depends(require_operator)):
                 "unresolved",
                 "suppress",
                 "standdown",
+                "coverage",
             )
         ][-25:],
         "monitored": {
             "sentinels": len(e.registry.sentinels),
             "panel": e.registry.panel_size(),
             "located": len(e.registry.device_district),
+            # Enrolled but not yet placed by the network. Not a fault: a device
+            # stays here until a geofence notification says where it is.
+            "awaiting_placement": len(e.registry.sentinels)
+            - len(e.registry.device_district),
         },
+        # How many devices are watching each district, and whether that is
+        # enough to believe its share. An operator has to be told "we cannot
+        # see the Marina" rather than shown a calm-looking Marina.
+        "coverage": e.coverage(),
         # Labelled clearly: a demo must never be mistaken for network data.
         "twin_mode": runtime.twin_mode,
         "ground_truth": runtime.twin_truth(),
@@ -570,17 +579,33 @@ def post_enrol(
 def post_auto_enrol(db: Session = Depends(getdb), _: dict = Depends(require_operator)):
     """Build the fleet and the panel from everyone who has consented."""
     e = get_engine()
-    out = enrollment.auto_enrol_users(db, districts=list(city.districts))
+    out = enrollment.auto_enrol_users(db)
     loaded = enrollment.load_into_registry(db, e.registry)
-    # Subscribe everything that is now monitored, so notifications can actually
-    # be attributed to a device and a district.
+
+    # Sentinels only.
+    #
+    # Panel phones used to be subscribed here too, and every one of those
+    # subscriptions was wasted. A panel device carries no district, so when its
+    # congestion notification arrived the engine looked the district up, found
+    # nothing and discarded the message - several hundred subscriptions,
+    # billed, producing nothing. The panel is only ever asked Location
+    # Verification questions, which need no subscription at all.
     n_subs = 0
-    for hashed, phone in list(e.registry.vault._to_phone.items()):
-        district = e.registry.district_of(hashed)
-        r = enrollment.subscribe_device(db, e, phone, district)
+    failures = 0
+    for hashed in list(e.registry.sentinels):
+        phone = e.registry.vault.phone_for(hashed)
+        if not phone:
+            continue
+        r = enrollment.subscribe_device(db, e, phone)
         n_subs += len(r.get("subscriptions", []))
+        if r.get("warning") or r.get("error"):
+            failures += 1
     return {
         "enrolled": out,
         "loaded_into_engine": loaded,
         "subscriptions_created": n_subs,
+        "devices_with_subscription_failures": failures,
+        "placed_by_network": len(e.registry.device_district),
+        "note": "districts are assigned by the network, not here; a device "
+                "stays in no district until a geofence notification arrives",
     }

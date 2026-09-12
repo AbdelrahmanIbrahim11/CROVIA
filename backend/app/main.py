@@ -29,7 +29,8 @@ from app import runtime
 from app.runtime import engine_now, get_engine, step_twin
 from app.services import (enrollment, incidents, operator_zones, priority,
                           warnings)
-from app.usersDB.db import create_table, drop_username_uniqueness, getdb
+from app.usersDB.db import (add_alert_delivery_kind, create_table,
+                           drop_username_uniqueness, getdb)
 
 logging.basicConfig(
     level=logging.INFO,
@@ -86,6 +87,9 @@ async def lifespan(app: FastAPI):
         # change, and this one turned a second person with the same name into
         # a 500.
         drop_username_uniqueness()
+        # create_all() never adds a column to a table that already exists, so
+        # a running deployment needs this or every warning insert fails.
+        add_alert_delivery_kind()
     except Exception as exc:
         logger.error("database unavailable: %s", exc)
 
@@ -153,9 +157,21 @@ async def lifespan(app: FastAPI):
         try:
             row = incidents.open_row_for(db, zone_id)
             incidents.close_incident(db, zone_id)
-            # Hand the priority back. Sessions are billed while they live, and
-            # an operator will withdraw a priority that never ends.
             if row is not None:
+                # Tell the people who were warned that it is over.
+                #
+                # Closing the incident is not the same as telling anybody. The
+                # warning said "avoid this place" and nothing ever withdrew it,
+                # so it sat in the app looking live long after the crowd had
+                # gone. The alarm clearing is the only moment we know it ended.
+                cleared = warnings.all_clear(db, row.id, zone_id)
+                if cleared.get("sent"):
+                    eng.log("all_clear",
+                            f"{cleared['sent']} people told that "
+                            f"{zone_id[5:]} is clear",
+                            zone=zone_id, **cleared)
+                # Hand the priority back. Sessions are billed while they live,
+                # and an operator will withdraw a priority that never ends.
                 priority.stand_down(db, eng.client, row.id)
         finally:
             db.close()

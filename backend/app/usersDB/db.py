@@ -99,6 +99,32 @@ def create_table():
     base.metadata.create_all(bind=engine)
 
 
+def add_alert_delivery_kind() -> None:
+    """
+    Add alert_deliveries.kind to a database that predates it.
+
+    create_all() creates missing tables but never adds a column to a table that
+    already exists, so without this an existing deployment keeps the old shape
+    and every insert naming `kind` fails.
+
+    Safe to run on every startup and on either database: the column is added
+    only if it is missing, and existing rows are warnings by definition, which
+    is what the default gives them.
+    """
+    from sqlalchemy import inspect, text
+
+    insp = inspect(engine)
+    if "alert_deliveries" not in insp.get_table_names():
+        return
+    cols = {c["name"] for c in insp.get_columns("alert_deliveries")}
+    if "kind" in cols:
+        return
+    with engine.begin() as conn:
+        conn.execute(text(
+            "ALTER TABLE alert_deliveries ADD COLUMN kind VARCHAR(16) "
+            "NOT NULL DEFAULT 'warning'"))
+
+
 def drop_username_uniqueness() -> None:
     """
     Let two people share a name.

@@ -119,7 +119,8 @@ def warn_people_near(db: Session, registry, record: dict,
     already = {
         h for (h,) in db.query(alert_delivery.hashed_id)
         .filter(alert_delivery.zone_id == zone_id,
-                alert_delivery.incident_id == incident_id)
+                alert_delivery.incident_id == incident_id,
+                alert_delivery.kind == "warning")
         .all()
     }
 
@@ -133,7 +134,7 @@ def warn_people_near(db: Session, registry, record: dict,
             continue
         row = alert_delivery(hashed_id=hashed, zone_id=zone_id,
                              incident_id=incident_id, channel=channel,
-                             title=title, body=body)
+                             kind="warning", title=title, body=body)
         if transport is not None:
             try:
                 transport(hashed, title, body)
@@ -175,6 +176,72 @@ def warn_people_near(db: Session, registry, record: dict,
             "no_phone_registered": sent - len(to_push) if sent >= len(to_push) else 0}
 
 
+def all_clear(db: Session, incident_id, zone_id: str,
+              channel: str = "in_app") -> dict:
+    """
+    Tell the people who were warned that the crowd has gone.
+
+    Sent to exactly the people who received the warning for this incident, and
+    to nobody else. Somebody who was never told to avoid the place does not
+    need to be told it is fine.
+
+    This exists because the warning had no end. It said "avoid this place" and
+    then sat in the app unchanged for ever, so a person opening the app an hour
+    later read a live-looking warning about a ramp that had been empty for
+    fifty minutes. A safety message nobody can tell the age of is a safety
+    message people learn to ignore.
+    """
+    told = [h for (h,) in db.query(alert_delivery.hashed_id)
+            .filter(alert_delivery.incident_id == incident_id,
+                    alert_delivery.kind == "warning").distinct().all()]
+    if not told:
+        return {"sent": 0}
+
+    # Nobody is told twice, in case an incident is closed more than once.
+    done = {h for (h,) in db.query(alert_delivery.hashed_id)
+            .filter(alert_delivery.incident_id == incident_id,
+                    alert_delivery.kind == "all_clear").all()}
+    recipients = [h for h in told if h not in done]
+    if not recipients:
+        return {"sent": 0, "already_told": len(done)}
+
+    zone = city.zones.get(zone_id)
+    place = zone.label if zone is not None else "the area"
+    title = f"{place} is clear"
+    body = ("The crowd there has dispersed and the route is moving normally "
+            "again. The earlier warning no longer applies.")
+
+    transport = _transports.get(channel)
+    tokens = push.tokens_for(db, recipients)
+
+    sent = 0
+    for hashed in recipients:
+        row = alert_delivery(hashed_id=hashed, zone_id=zone_id,
+                             incident_id=incident_id, channel=channel,
+                             kind="all_clear", title=title, body=body)
+        if transport is not None:
+            try:
+                transport(hashed, title, body)
+            except Exception as exc:
+                row.failed_reason = str(exc)[:200]
+        db.add(row)
+        if row.failed_reason is None:
+            sent += 1
+    db.commit()
+
+    to_push: list[str] = []
+    for hashed in recipients:
+        to_push.extend(tokens.get(hashed, []))
+    pushed = {"accepted": 0}
+    if to_push:
+        pushed = push.send(db, to_push, title, body,
+                           data={"zone_id": zone_id, "kind": "all_clear"})
+
+    logger.info("all-clear for %s sent to %d people (%d phones reached)",
+                zone_id, sent, pushed.get("accepted", 0))
+    return {"sent": sent, "pushed": pushed.get("accepted", 0)}
+
+
 def _consented_hashes(db: Session) -> list[str]:
     """Everyone who has agreed to be monitored and has not taken it back."""
     rows = (db.query(device_consent.hashed_id)
@@ -183,18 +250,51 @@ def _consented_hashes(db: Session) -> list[str]:
 
 
 def inbox(db: Session, hashed_id: str, limit: int = 20) -> list[dict]:
-    """Warnings for one person, newest first."""
-    rows = (db.query(alert_delivery)
+    """
+    Warnings for one person, newest first, each saying whether it still applies.
+
+    `active` is the field that matters. A warning used to be returned exactly
+    the same whether the crowd was still building or had dispersed an hour ago,
+    so the app had no way to show the difference and a stale warning looked
+    identical to a live one.
+
+    The answer is already in the database - an incident records `ended_at` the
+    moment the alert clears - it was simply never read back to the person who
+    was warned.
+    """
+    from app.usersDB.models import incident
+
+    rows = (db.query(alert_delivery, incident)
+              .outerjoin(incident, alert_delivery.incident_id == incident.id)
               .filter(alert_delivery.hashed_id == hashed_id)
               .order_by(alert_delivery.sent_at.desc())
               .limit(limit).all())
-    return [
-        {"id": str(r.id), "zone_id": r.zone_id, "title": r.title, "body": r.body,
-         "sent_at": r.sent_at.isoformat() if r.sent_at else None,
-         "read": r.read_at is not None,
-         "failed_reason": r.failed_reason}
-        for r in rows
-    ]
+
+    now = datetime.now(timezone.utc)
+    out = []
+    for r, inc in rows:
+        ended = inc.ended_at if inc is not None else None
+        sent = r.sent_at
+        age_s = None
+        if sent is not None:
+            # Rows written before timezone support can come back naive.
+            if sent.tzinfo is None:
+                sent = sent.replace(tzinfo=timezone.utc)
+            age_s = max(0, int((now - sent).total_seconds()))
+        out.append({
+            "id": str(r.id), "zone_id": r.zone_id,
+            "kind": r.kind or "warning",
+            "title": r.title, "body": r.body,
+            "sent_at": r.sent_at.isoformat() if r.sent_at else None,
+            "age_seconds": age_s,
+            # False once the incident it belongs to has closed. An all-clear is
+            # never "active" - it is the notice that something ended.
+            "active": (r.kind or "warning") == "warning" and ended is None,
+            "ended_at": ended.isoformat() if ended else None,
+            "read": r.read_at is not None,
+            "failed_reason": r.failed_reason,
+        })
+    return out
 
 
 def mark_read(db: Session, delivery_id: str, owner_hash: str | None = None) -> bool:

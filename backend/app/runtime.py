@@ -129,16 +129,26 @@ def _build_twin_engine(budget: Budget) -> Engine:
         for i in members[:60]:
             p = phone(i)
             client.bind(p, i)
-            h = registry.add_sentinel(p, did)
+            h = registry.add_sentinel(p)
             try:
                 sub = client.create_congestion_subscription(p, "twin", 86400)
                 registry.bind_subscription(sub, h, "congestion", did)
-                d = city.districts[did]
-                g, evt = client.create_geofence_subscription(
-                    p, did, Area(d.center.lat, d.center.lon, d.radius_m), "twin", 86400, True)
-                registry.bind_subscription(g, h, "district", did)
-                if evt and evt["type"] == "area-entered":
-                    registry.place(h, did, 0.0)
+                # A geofence on EVERY district, exactly as subscribe_device does
+                # for the real network.
+                #
+                # With one subscription per device - on the district it started
+                # in - a simulated person who walked out was removed from that
+                # fleet and never added to the one they walked into, because
+                # they had no subscription there. Over a few minutes every fleet
+                # drained, no district held enough devices to be trusted, and a
+                # crowd formed with nothing watching it.
+                for other, d in city.districts.items():
+                    g, evt = client.create_geofence_subscription(
+                        p, other, Area(d.center.lat, d.center.lon, d.radius_m),
+                        "twin", 86400, True)
+                    registry.bind_subscription(g, h, "district", other)
+                    if evt and evt["type"] == "area-entered":
+                        registry.place(h, other, 0.0)
             except ApiError:
                 pass
     for i in rng.choice(app_idx, size=400, replace=False):

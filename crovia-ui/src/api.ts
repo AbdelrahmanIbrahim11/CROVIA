@@ -200,9 +200,22 @@ export async function fetchNearby(signal?: AbortSignal): Promise<NearbyState | n
 export type Warning = {
   id: string;
   zone_id: string;
+  /** "warning" to avoid a place, or "all_clear" saying it is over. */
+  kind: 'warning' | 'all_clear';
   title: string;
   body: string;
   sent_at: string | null;
+  /** How long ago it was sent. Lets a stale warning be shown as stale. */
+  age_seconds: number | null;
+  /**
+   * Whether this warning still applies.
+   *
+   * False once the incident it belongs to has closed. Without it every warning
+   * looked equally live, so one about a crowd that dispersed an hour ago was
+   * indistinguishable from one about a crowd forming now.
+   */
+  active: boolean;
+  ended_at: string | null;
   read: boolean;
 };
 

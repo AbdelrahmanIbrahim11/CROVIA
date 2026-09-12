@@ -77,33 +77,61 @@ export function NotificationsScreen() {
           ) : null}
 
           <VStack space="md">
-            {warnings.map((w) => (
-              <Pressable key={w.id} onPress={() => open(w)} accessibilityRole="button">
-                <Box
-                  bg={cardBg}
-                  borderWidth={1}
-                  borderColor={w.read ? borderColor : '#ff4444'}
-                  borderLeftWidth={3}
-                  borderLeftColor={w.read ? borderColor : '#ff4444'}
-                  borderRadius="$xl"
-                  p="$4"
-                >
-                  <HStack alignItems="flex-start" justifyContent="space-between">
-                    <Text size="md" fontWeight="$bold" color={textPrimary} flex={1} mr="$2">
-                      {w.title}
+            {warnings.map((w) => {
+              // Three states, deliberately different to look at.
+              //
+              // A warning that still applies is the only one drawn in red. One
+              // whose crowd has dispersed is drawn quietly and says so, because
+              // a stale warning shown as urgent is how people learn to ignore
+              // the urgent ones. An all-clear is a separate kind of message and
+              // is never red at all.
+              const isAllClear = w.kind === 'all_clear';
+              const live = w.active && !isAllClear;
+              const edge = isAllClear ? '#00C851' : live ? '#ff4444' : borderColor;
+              return (
+                <Pressable key={w.id} onPress={() => open(w)} accessibilityRole="button">
+                  <Box
+                    bg={cardBg}
+                    borderWidth={1}
+                    borderColor={live && !w.read ? '#ff4444' : borderColor}
+                    borderLeftWidth={3}
+                    borderLeftColor={edge}
+                    borderRadius="$xl"
+                    p="$4"
+                    opacity={!live && !isAllClear ? 0.7 : 1}
+                  >
+                    <HStack alignItems="flex-start" justifyContent="space-between">
+                      <Text size="md" fontWeight="$bold" color={textPrimary} flex={1} mr="$2">
+                        {w.title}
+                      </Text>
+                      <Text size="xs" color={textMuted}>{whenText(w.sent_at)}</Text>
+                    </HStack>
+
+                    {live ? (
+                      <Text size="xs" fontWeight="$bold" color="#ff4444" mt="$1">
+                        HAPPENING NOW
+                      </Text>
+                    ) : isAllClear ? (
+                      <Text size="xs" fontWeight="$bold" color="#00C851" mt="$1">
+                        ALL CLEAR
+                      </Text>
+                    ) : (
+                      <Text size="xs" fontWeight="$bold" color={textMuted} mt="$1">
+                        ENDED · this no longer applies
+                      </Text>
+                    )}
+
+                    <Text size="sm" color={textMuted} mt="$2" lineHeight="$md">
+                      {w.body}
                     </Text>
-                    <Text size="xs" color={textMuted}>{whenText(w.sent_at)}</Text>
-                  </HStack>
-                  <Text size="sm" color={textMuted} mt="$2" lineHeight="$md">
-                    {w.body}
-                  </Text>
-                  <Text size="xs" color={accentColor} mt="$2">
-                    {zoneById[w.zone_id]?.label ?? w.zone_id}
-                    {w.read ? '' : ' · tap to mark as read'}
-                  </Text>
-                </Box>
-              </Pressable>
-            ))}
+                    <Text size="xs" color={accentColor} mt="$2">
+                      {zoneById[w.zone_id]?.label ?? w.zone_id}
+                      {w.read ? '' : ' · tap to mark as read'}
+                    </Text>
+                  </Box>
+                </Pressable>
+              );
+            })}
           </VStack>
         </VStack>
       </ScrollView>

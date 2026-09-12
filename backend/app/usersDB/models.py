@@ -189,6 +189,14 @@ class alert_delivery(base):
     # How it went out. "in_app" is the only channel wired up; the column exists
     # so adding SMS or push later does not need a migration of live rows.
     channel = Column(String(20), nullable=False, default="in_app")
+    # "warning" or "all_clear".
+    #
+    # Both are messages about the same incident, and a person needs to see the
+    # second one as plainly as the first. Without this a warning sat in the app
+    # for ever saying "avoid this place", with nothing ever saying the crowd had
+    # gone - so somebody opening the app an hour later read a live-looking
+    # warning about a place that was already empty.
+    kind = Column(String(16), nullable=False, default="warning", index=True)
     title = Column(String(160), nullable=False)
     body = Column(Text, nullable=False)
     sent_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))

@@ -35,6 +35,7 @@ its operators to ignore it.
 
 from __future__ import annotations
 
+import os
 from dataclasses import dataclass
 
 from app.core.city import City, Segment
@@ -127,6 +128,9 @@ OUTFLOW_COLLAPSE = 0.30
 # Dwell longer than this multiple of the free crossing time means stuck.
 DWELL_STUCK = 1.8
 
+# Whether the "people went in and are not coming out" path may fire at all.
+NOT_CLEARING_ENABLED = os.getenv("CROVIA_RULE_NOT_CLEARING", "1") != "0"
+
 
 def assess(city: City, ev: Evidence) -> Verdict:
     hazard: Segment | None = city.bottleneck_of(ev.zone_id)
@@ -197,7 +201,13 @@ def assess(city: City, ev: Evidence) -> Verdict:
 
     packed_enough = ev.people >= room_at_the_pinch and unusual
 
-    not_clearing = packed_enough and (
+    # Each alarm path can be switched off.
+    #
+    # A safety system should let an operator retire a rule that is misfiring in
+    # their city without redeploying it, and it is also the only honest way to
+    # measure what a rule is actually worth: turn it off across every scenario
+    # and see what is lost as well as what is gained.
+    not_clearing = NOT_CLEARING_ENABLED and packed_enough and (
         (ev.outflow_ratio is not None and ev.outflow_ratio < OUTFLOW_COLLAPSE)
         or (ev.dwell_ratio is not None and ev.dwell_ratio >= DWELL_STUCK)
     )
@@ -249,8 +259,29 @@ def assess(city: City, ev: Evidence) -> Verdict:
         how = (f"only {ev.outflow_ratio:.0%} of the arriving group has come out"
                if ev.outflow_ratio is not None and ev.outflow_ratio < OUTFLOW_COLLAPSE
                else f"people inside are taking {ev.dwell_ratio:.1f}x the normal walking time")
+        # State how unusual this is for this particular zone, and stop there.
+        #
+        # An earlier version added a verdict - "a genuine gathering rather than
+        # the people normally here" - and immediately got it wrong: a false
+        # alarm on a district people were merely walking through read as 2.1
+        # times normal, which is perfectly true and says nothing at all about
+        # whether anybody is in danger.
+        #
+        # "Many people, nobody leaving" describes a crush and a busy
+        # neighbourhood equally well, and nothing in the measurement separates
+        # them. So the number is given plainly for a person to weigh, with no
+        # claim attached to it.
+        if ev.above_baseline is None:
+            caveat = (" This zone has no settled normal level yet, so there is "
+                      "nothing to compare this figure against.")
+        else:
+            caveat = (f" That is about {ev.above_baseline:.1f} times the usual "
+                      f"number of people for this zone. A high count that is "
+                      f"not moving can mean a crowd held at the link, or simply "
+                      f"the people who live and work here - this measurement "
+                      f"cannot tell the two apart, so check before acting.")
         reason = (f"{low:,.0f}-{high:,.0f} people and they are not clearing ({how}). "
-                  f"The narrowest link is {hazard.width_m:.0f} m")
+                  f"The narrowest link is {hazard.width_m:.0f} m.{caveat}")
     elif over_density and enough_people and not draining:
         dangerous, fired_by = True, "density"
         reason = (f"corridor at {corridor_density:.1f} people/m2, past the "

@@ -53,6 +53,9 @@ class ZoneState:
     # honour the zone's own urgency rather than its district's stale state.
     next_interval: float | None = None
     consecutive_high: int = 0
+    # Readings in a row showing the crowd is going down. Firing already needs
+    # two confirmations; standing down needs them too, or the alarm flaps.
+    consecutive_low: int = 0
     # Who was found inside last time, and when each device was first seen
     # there. Without these the engine can only measure the NET change in a
     # headcount, which cannot tell a crowd flowing through a place from a crowd
@@ -895,8 +898,22 @@ class Engine:
                     self._notify(self.on_alert_raised, record)
                 ds.state = ALERT
             else:
-                if zs.alerted and rate <= 0:
+                # Two readings in a row before standing down, exactly as two
+                # are required before firing.
+                #
+                # A single low reading used to clear the alarm, and a single
+                # high one re-raised it. Since each sampled device stands for
+                # hundreds of people the measured rate wobbles around zero at
+                # the end of an event, so one crowd raised three separate
+                # alarms in an hour - and every one of them wrote a fresh
+                # incident and sent a fresh warning to everybody in the
+                # district. The result was a flood of notifications for a
+                # single crowd, which is exactly how people learn to ignore
+                # them.
+                zs.consecutive_low = zs.consecutive_low + 1 if rate <= 0 else 0
+                if zs.alerted and zs.consecutive_low >= 2:
                     zs.alerted = False
+                    zs.consecutive_low = 0
                     # Why it ended, in the same numbers that made it start.
                     #
                     # An alarm that simply vanishes teaches people to distrust

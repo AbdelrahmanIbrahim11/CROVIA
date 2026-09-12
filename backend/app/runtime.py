@@ -454,7 +454,12 @@ def demo_status() -> dict:
             "real_seconds": round(_time.time() - _demo_started_at, 1)
             if _demo_started_at else 0,
             "speed": float(os.getenv("CROVIA_TWIN_SPEED", DEMO_SPEED_DEFAULT)),
-            "alerts": len(_demo_engine.alerts),
+            # Alarms live RIGHT NOW, not every alarm ever raised.
+            #
+            # The screen showed "3 alarms" beside a map with one red circle,
+            # because this counted the whole history. The number next to a map
+            # has to mean the same thing the map is showing.
+            "alerts": sum(1 for z in _demo_engine.zones.values() if z.alerted),
         }
     z = os.getenv("CROVIA_TWIN_ZONE", "zone_stadium_north_concourse")
     return {
@@ -466,7 +471,7 @@ def demo_status() -> dict:
         "simulated_seconds": round(_demo_twin.t, 1) if _demo_twin else 0,
         "real_seconds": round(_time.time() - _demo_started_at, 1) if _demo_started_at else 0,
         "speed": float(os.getenv("CROVIA_TWIN_SPEED", DEMO_SPEED_DEFAULT)),
-        "alerts": len(_demo_engine.alerts),
+        "alerts": sum(1 for z in _demo_engine.zones.values() if z.alerted),
     }
 
 

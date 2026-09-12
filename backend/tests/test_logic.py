@@ -168,9 +168,16 @@ def test_the_panel_estimate_is_a_simple_proportion():
 def test_a_phone_number_never_leaves_the_vault():
     """Everything outside the vault refers to a device by hash only."""
     r = DeviceRegistry()
-    h = r.add_panel("+97430001234", "district_stadium")
+    h = r.add_panel("+97430001234")
     assert "+974" not in h
     assert r.vault.phone_for(h) == "+97430001234"
+
+    # Enrolling places nobody. This used to assert the opposite, because a
+    # district passed at enrolment was written straight into the registry as
+    # though it had been measured. Only a geofence notification may place a
+    # device now; see tests/test_placement.py.
+    assert r.district_of(h) is None
+    r.place(h, "district_stadium", 0.0)
     assert r.district_of(h) == "district_stadium"
 
 

@@ -45,9 +45,14 @@ The engine dynamically alters how often it polls a zone based on the zone's dang
 *   **`on_subscription_end`**: Crucial for visibility. It unbinds a device from a tracking subscription so the engine knows the phone dropped offline. This prevents the engine from falsely assuming a crowd dispersed just because the network went silent.
 
 ### 7. The Main Sensor (`count_zone`)
-*   **Process**: It grabs a **fresh, random sample** of the `Panel`. It pings the CAMARA Location Verification API for each person in the sample.
+*   **Process**: It grabs a **fresh, random sample** of the `Panel`. It pings the CAMARA Location Verification API for each person in the sample. It tracks the exact cohort of users over time to calculate how long they are dwelling (`dwell_ratio`) and how many are leaving (`outflow_ratio`).
 *   **The UNKNOWN Fix**: If the telecom network returns `UNKNOWN` (meaning it couldn't locate the phone), the code explicitly discards that phone from the math. If it counted them as "not in the zone", the system would drastically under-count the true size of the crowd.
 *   **Returns**: It runs the registry math `(inside / checked * city_population)` to return an unbiased estimate of the total crowd size.
+
+### 8. The Position Fixer (`locate_crowd`)
+*   **Process**: Gathering GPS coordinates is incredibly expensive (3x the cost of verification). The engine refuses to use it for general polling. However, the exact millisecond `danger.py` declares an alarm, the engine runs `locate_crowd` exactly once.
+*   **The Math**: It buys ~20 GPS fixes and calculates the **Median Center** of the crowd, completely ignoring outliers. It compares this center to the physical street bottleneck.
+*   **The Output**: It generates a plain-text note for the operator. If the crowd center is exactly at the bottleneck, it confirms the crush. If the crowd is spread out or centered 400 meters away, it warns the operator that the crowd is large, but might not be trapped yet. **Crucially: It never cancels the alarm.** The mathematical alarm always stands.
 
 ---
 

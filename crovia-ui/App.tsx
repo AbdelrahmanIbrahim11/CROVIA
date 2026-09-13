@@ -19,6 +19,7 @@ import {
   loadSession,
   signOut as apiSignOut,
   stillValid,
+  onSessionExpired,
 } from './src/session';
 
 type Route = 'signin' | 'signup' | 'citizen' | 'police';
@@ -79,6 +80,15 @@ function Shell() {
       registerForPush().then(setPushToken);
     }
   };
+
+  // An expired token sends the person back to sign in, rather than leaving
+  // them on a screen that quietly stopped updating twelve hours ago.
+  useEffect(() => {
+    return onSessionExpired(() => {
+      setSession(null);
+      setRoute('signin');
+    });
+  }, []);
 
   const handleSignOut = async () => {
     await unregisterPush(pushToken);

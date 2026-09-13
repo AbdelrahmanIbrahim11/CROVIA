@@ -15,7 +15,7 @@ import {
   CrowdCluster,
 } from './components/CityMap.types';
 import { bottleneckOf, segmentPath, zoneById } from './geo';
-import { authHeader } from './session';
+import { authHeader, sessionExpired } from './session';
 
 const DEFAULT_BASE = 'http://localhost:8000';
 
@@ -91,13 +91,18 @@ export type LiveState = {
   spend: { total: number; by_tier: Record<string, number> };
 };
 
+/** A 401 means the token has expired, not that the city is quiet. */
+function checkAuth(status: number): void {
+  if (status === 401) sessionExpired();
+}
+
 export async function fetchLiveState(signal?: AbortSignal): Promise<LiveState | null> {
   try {
     // The live picture is operations data and now needs a token. Without one
     // the backend answers 401 and the app falls back to demo data, exactly as
     // it does when the backend is not running at all.
     const r = await fetch(`${API_BASE}/api/state`, { signal, headers: authHeader() });
-    if (!r.ok) return null;
+    if (!r.ok) { checkAuth(r.status); return null; }
     return (await r.json()) as LiveState;
   } catch {
     return null; // backend not running: the caller falls back to demo data
@@ -192,7 +197,7 @@ export type NearbyState = {
 export async function fetchNearby(signal?: AbortSignal): Promise<NearbyState | null> {
   try {
     const r = await fetch(`${API_BASE}/api/nearby`, { signal, headers: authHeader() });
-    if (!r.ok) return null;
+    if (!r.ok) { checkAuth(r.status); return null; }
     return (await r.json()) as NearbyState;
   } catch {
     return null;

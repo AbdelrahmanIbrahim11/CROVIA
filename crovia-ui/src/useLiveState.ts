@@ -20,14 +20,32 @@ export function useLiveState(intervalMs = 5000) {
     let cancelled = false;
     const ctl = new AbortController();
 
+    // Old danger must not keep being drawn as if it were current.
+    //
+    // A failed poll used to leave the last good reading on screen for ever, so
+    // a red critical zone stayed on the map long after the crowd had gone and
+    // long after the connection had dropped - beside a header that correctly
+    // said "backend offline". Anybody looking would have sent people to a
+    // place that was empty.
+    //
+    // A single blip is tolerated, because one dropped request on a phone is
+    // normal and clearing the map on every hiccup would be its own kind of
+    // lying. After three in a row - about fifteen seconds - the map is emptied
+    // and the screen says it has lost contact rather than showing a city it
+    // can no longer see.
+    let misses = 0;
+
     const tick = async () => {
       const s = await fetchLiveState(ctl.signal);
       if (cancelled) return;
       if (s) {
+        misses = 0;
         setState(s);
         setConnection('live');
       } else {
+        misses += 1;
         setConnection('offline');
+        if (misses >= 3) setState(null);
       }
     };
 
@@ -60,14 +78,21 @@ export function useNearby(intervalMs = 5000) {
     let cancelled = false;
     const ctl = new AbortController();
 
+    // Same reasoning as useLiveState above: a stale warning shown as live is
+    // worse than an honest "no data".
+    let misses = 0;
+
     const tick = async () => {
       const s = await fetchNearby(ctl.signal);
       if (cancelled) return;
       if (s) {
+        misses = 0;
         setState(s);
         setConnection('live');
       } else {
+        misses += 1;
         setConnection('offline');
+        if (misses >= 3) setState(null);
       }
     };
 

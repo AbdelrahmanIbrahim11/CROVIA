@@ -51,6 +51,27 @@ export function saveSession(s: Session): void {
   writeStore(KEY, JSON.stringify(s));
 }
 
+/**
+ * Anyone who wants to know the session stopped being valid.
+ *
+ * A token lasts twelve hours and then every request answers 401. Without this
+ * the app simply reported "backend offline" for ever and kept the last screen
+ * it had drawn - so a stale crowd stayed on the map and the only way out was
+ * for the person to guess they needed to sign in again.
+ */
+const expiryListeners = new Set<() => void>();
+
+export function onSessionExpired(fn: () => void): () => void {
+  expiryListeners.add(fn);
+  return () => expiryListeners.delete(fn);
+}
+
+/** Called when the server says a token is no longer good. */
+export function sessionExpired(): void {
+  clearSession();
+  expiryListeners.forEach((fn) => fn());
+}
+
 export function clearSession(): void {
   writeStore(KEY, null);
 }

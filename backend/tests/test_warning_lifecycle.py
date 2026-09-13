@@ -19,6 +19,7 @@ import os
 import sys
 import tempfile
 import uuid
+from datetime import datetime, timedelta, timezone
 
 os.environ["JWT_SECRET"] = "a-test-secret-long-enough-for-sha256"
 os.environ["DATABASE_URL"] = "sqlite:///" + tempfile.mkdtemp() + "/wl.db"
@@ -29,6 +30,7 @@ from app.core.registry import DeviceRegistry, hash_phone  # noqa: E402
 from app.services import enrollment, incidents, warnings  # noqa: E402
 from app.usersDB.db import (add_alert_delivery_kind, create_table,  # noqa: E402
                             getdb)
+from app.usersDB.models import alert_delivery  # noqa: E402
 
 results: list[tuple[str, bool, str]] = []
 
@@ -101,11 +103,26 @@ def run() -> int:
           f"{again}")
     check("still only two messages", len(warnings.inbox(db, me)) == 2)
 
-    print("\n-- an all-clear must not block a later warning --------------------")
+    print("\n-- the same place must not nag, but must still warn later ---------")
+    # A draining crowd rises and falls, raising several genuine alarms within a
+    # few minutes. The person should hear about the place once, not once per
+    # wave - but a fresh danger hours later must still reach them.
     row2 = incidents.open_incident(db, RECORD)
-    sent2 = warnings.warn_people_near(db, registry, RECORD, incident_id=row2.id)
-    check("a new incident warns them again", sent2["sent"] == 2,
-          "the 'already told' check counts warnings only")
+    again = warnings.warn_people_near(db, registry, RECORD, incident_id=row2.id)
+    check("a second alarm minutes later does NOT nag", again["sent"] == 0,
+          "the inbox filled with avoid / clear / avoid / clear before this")
+
+    # Wind every existing message back beyond the quiet period.
+    cutoff = datetime.now(timezone.utc) - timedelta(
+        minutes=warnings.QUIET_MINUTES * 3)
+    for r in db.query(alert_delivery).all():
+        r.sent_at = cutoff
+    db.commit()
+
+    row3 = incidents.open_incident(db, RECORD)
+    later = warnings.warn_people_near(db, registry, RECORD, incident_id=row3.id)
+    check("but a fresh danger later does warn again", later["sent"] == 2,
+          "silence must be temporary, never permanent")
 
     box = warnings.inbox(db, me)
     live = [w for w in box if w["active"]]

@@ -29,7 +29,7 @@ was sent.
 from __future__ import annotations
 
 import logging
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Callable
 
 from sqlalchemy.orm import Session
@@ -43,6 +43,9 @@ logger = logging.getLogger("crovia.warnings")
 # A transport takes (hashed_id, title, body) and raises on failure. The default
 # records the warning for the app to collect. Registering a real SMS or push
 # sender later does not require touching anything above this line.
+# How long a person is left alone after being warned about a place.
+QUIET_MINUTES = 15
+
 Transport = Callable[[str, str, str], None]
 _transports: dict[str, Transport] = {}
 
@@ -116,11 +119,25 @@ def warn_people_near(db: Session, registry, record: dict,
     transport = _transports.get(channel)
 
     # One per person per incident. Re-confirmation sends nothing.
+    # Nobody hears about the same place twice in a quarter of an hour.
+    #
+    # One warning per INCIDENT was not enough. A draining crowd rises and falls
+    # in waves, so the same zone legitimately raised three alarms in a few
+    # minutes - three separate incidents, three fresh warnings to the same
+    # people, and an inbox reading avoid / clear / avoid / clear / avoid /
+    # clear about a single event.
+    #
+    # Detection is untouched: the alarm still fires, the incident is still
+    # recorded, the operator still sees it. What is suppressed is telling a
+    # person something they were told minutes ago, because a phone that buzzes
+    # repeatedly during one event is a phone that gets silenced - and then the
+    # next warning, about something new, is never seen either.
+    since = datetime.now(timezone.utc) - timedelta(minutes=QUIET_MINUTES)
     already = {
         h for (h,) in db.query(alert_delivery.hashed_id)
         .filter(alert_delivery.zone_id == zone_id,
-                alert_delivery.incident_id == incident_id,
-                alert_delivery.kind == "warning")
+                alert_delivery.kind == "warning",
+                alert_delivery.sent_at >= since)
         .all()
     }
 
@@ -191,16 +208,22 @@ def all_clear(db: Session, incident_id, zone_id: str,
     fifty minutes. A safety message nobody can tell the age of is a safety
     message people learn to ignore.
     """
+    # Everyone warned about this place recently, not only during this one
+    # incident - a crowd that alarmed three times warned people under the first
+    # incident, and they are the ones owed the all-clear.
+    since = datetime.now(timezone.utc) - timedelta(minutes=QUIET_MINUTES * 2)
     told = [h for (h,) in db.query(alert_delivery.hashed_id)
-            .filter(alert_delivery.incident_id == incident_id,
-                    alert_delivery.kind == "warning").distinct().all()]
+            .filter(alert_delivery.zone_id == zone_id,
+                    alert_delivery.kind == "warning",
+                    alert_delivery.sent_at >= since).distinct().all()]
     if not told:
         return {"sent": 0}
 
     # Nobody is told twice, in case an incident is closed more than once.
     done = {h for (h,) in db.query(alert_delivery.hashed_id)
-            .filter(alert_delivery.incident_id == incident_id,
-                    alert_delivery.kind == "all_clear").all()}
+            .filter(alert_delivery.zone_id == zone_id,
+                    alert_delivery.kind == "all_clear",
+                    alert_delivery.sent_at >= since).all()}
     recipients = [h for h in told if h not in done]
     if not recipients:
         return {"sent": 0, "already_told": len(done)}

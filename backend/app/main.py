@@ -210,6 +210,26 @@ async def lifespan(app: FastAPI):
                 # warning said "avoid this place" and nothing ever withdrew it,
                 # so it sat in the app looking live long after the crowd had
                 # gone. The alarm clearing is the only moment we know it ended.
+                # Only when the WHOLE city is quiet again.
+                #
+                # An all-clear per zone meant a person watching one event got
+                # "clear", then "avoid", then "clear" again as a draining crowd
+                # rose and fell in waves - and a message saying it is safe
+                # while another zone is still critical is worse than saying
+                # nothing at all.
+                #
+                # So the all-clear waits for the last dangerous zone to stand
+                # down. One warning when something starts, one all-clear when
+                # everything has finished.
+                still_dangerous = [z for z in eng.zones.values() if z.alerted]
+                if still_dangerous:
+                    eng.log("standdown",
+                            f"{zone_id[5:]} is clear, but {len(still_dangerous)} "
+                            f"other zone(s) are still critical - holding the "
+                            f"all-clear until the city is quiet",
+                            zone=zone_id)
+                    priority.stand_down(db, eng.client, row.id)
+                    return
                 cleared = warnings.all_clear(db, row.id, zone_id, because=because)
                 if cleared.get("sent"):
                     eng.log("all_clear",

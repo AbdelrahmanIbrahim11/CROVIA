@@ -168,31 +168,11 @@ export function UserDashboardScreen({
             </Box>
           ) : null}
 
-          {/* Legend */}
-          <VStack
-            position="absolute"
-            left="$4"
-            bottom={260}
-            bg="rgba(30, 35, 54, 0.9)"
-            borderWidth={1}
-            borderColor={borderColor}
-            borderRadius="$lg"
-            p="$3"
-            space="sm"
-          >
-            {[
-              { c: '#00C851', l: 'Calm' },
-              { c: '#33b5e5', l: 'Watch' },
-              { c: accentColor, l: 'Elevated' },
-              { c: '#ff4444', l: 'Critical' },
-            ].map((row) => (
-              <HStack key={row.l} alignItems="center" space="xs">
-                <Box w={10} h={10} borderRadius="$full" bg={row.c} />
-                <Text size="xs" color={textMuted} fontWeight="$medium">{row.l}</Text>
-              </HStack>
-            ))}
-          </VStack>
-
+          {/* The four-level severity key used to sit here.
+              It belongs on the operations screen, where somebody is comparing
+              zones and deciding where to send people. A member of the public
+              is answering one question - is it safe where I am going - and the
+              card below already answers it in words. */}
           <DemoCard
             accentColor={accentColor}
             borderColor={borderColor}

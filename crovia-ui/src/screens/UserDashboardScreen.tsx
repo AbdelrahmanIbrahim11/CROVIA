@@ -117,7 +117,7 @@ export function UserDashboardScreen({
         title: liveAlert.segment_label,
         summary: liveAlert.reason,
         detail: liveAlert.reason,
-        action: 'Show me the way out',
+        action: '',
         time: 'now',
         unread: true,
       }
@@ -326,14 +326,6 @@ export function UserDashboardScreen({
             </VStack>
             <StatusChip level={level} />
           </HStack>
-          {liveAlert ? (
-            <MotionButton
-              label="Show me the way out"
-              color={accentColor}
-              textColor="#161A28"
-              onPress={() => setAlertOpen(true)}
-            />
-          ) : null}
         </VStack>
       </Box>
 

@@ -77,6 +77,8 @@ export type ZoneVerdict = {
 };
 
 export type LiveState = {
+  /** Zones alarming right now, as opposed to every alarm ever raised. */
+  alerting_now?: string[];
   t: number;
   districts: Record<string, string>;
   zones: Record<string, ZoneVerdict | null>;
@@ -444,7 +446,17 @@ export function toOverlays(state: LiveState): {
   //
   // These previously carried latitude and longitude of zero, which put every
   // alarm in the Atlantic instead of on Lusail.
-  const clusters: CrowdCluster[] = state.alerts
+  // Only zones that are alarming at this moment.
+  //
+  // This used to draw the last three alarms in the history regardless of
+  // whether they had cleared, so red circles lingered on an empty city while
+  // the panel beside them correctly said zero alarms. Falls back to the recent
+  // history only if the server is too old to report which are live.
+  const live = state.alerting_now;
+  const clusters: CrowdCluster[] = (
+    live ? state.alerts.filter((a) => live.includes(a.zone_id))
+         : state.alerts.slice(-3)
+  )
     .slice(-3)
     .map((a, i): CrowdCluster | null => {
       const zone = zoneById[a.zone_id];

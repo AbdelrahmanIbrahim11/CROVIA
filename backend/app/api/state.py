@@ -96,6 +96,13 @@ def get_state(_: dict = Depends(require_operator)):
     return {
         **snap,
         "alerts": e.alerts[-20:],
+        # Which zones are alarming RIGHT NOW.
+        #
+        # The map used to draw the last three alarms in the history, so red
+        # circles stayed on screen long after the crowds had gone - and sat
+        # there beside a panel correctly reporting zero alarms. A map and the
+        # number beside it have to describe the same moment.
+        "alerting_now": [z for z, st in e.zones.items() if st.alerted],
         # Where the middle of each alarming crowd sits. A measurement for an
         # operator to weigh, NOT a judgement about which alarms are real - a
         # crowd strung along a a long approach reads as "spread_out" while a

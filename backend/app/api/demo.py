@@ -479,11 +479,13 @@ def all_apis(refresh: bool = False, skip_qod: bool = False,
     results["location_retrieval"] = {
         "question": "Where is this device, in coordinates?",
         "devices": rows,
-        "note": "Compare 1001 with its Location Verification answer above. "
-                "Verification puts it inside a circle in Lusail; retrieval puts "
-                "it in Budapest. Two APIs cannot both be right about one "
-                "handset, which is the clearest evidence these answers are "
-                "fixed to the phone number rather than measured.",
+        "note": "All four devices come back at the SAME coordinates, in "
+                "Budapest - and Location Verification says one of them is "
+                "inside a circle in Lusail, four thousand kilometres away. "
+                "Four handsets cannot share one spot, and two APIs cannot both "
+                "be right about one of them. This is the clearest evidence "
+                "that every answer here is fixed to the phone number rather "
+                "than measured from a position.",
     }
 
     # --- 4. Quality on Demand ---------------------------------------------

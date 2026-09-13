@@ -303,3 +303,337 @@ def stop_simulation(user: dict = Depends(current_user)):
     out = runtime.stop_demo()
     logger.info("demonstration stopped by %s", user.get("username"))
     return out
+
+
+# ---------------------------------------------------------------------------
+# Every API, on the four devices Nokia gives us
+# ---------------------------------------------------------------------------
+
+# What each API is charged at, so the page can show the cost of what it just
+# did rather than asserting a price list. Mirrors core/budget.py.
+_API_ORDER = [
+    ("location_verification", "Location Verification", 1.0,
+     "Is this device inside this circle? The main sensor - every headcount "
+     "comes from this call. Returns no coordinates."),
+    ("reachability", "Device Status - Reachability", 0.5,
+     "Can this device answer at all? A free pre-filter, so we never pay to "
+     "locate a handset that is switched off."),
+    ("location_retrieval", "Location Retrieval", 3.0,
+     "Actual coordinates. Bought once, at the moment an alarm fires, for about "
+     "twenty devices - never for routine counting."),
+    ("qod", "Quality on Demand", 5.0,
+     "Asks the network to protect a responder's connection. The only API here "
+     "that CHANGES the network rather than reporting on it."),
+    ("congestion_insights", "Congestion Insights", 1.0,
+     "Subscribes a device so the network pushes us a notification when its "
+     "cell is busy. Free to listen; this is what decides where to look."),
+    ("geofencing", "Geofencing", 1.0,
+     "Subscribes a device to a district boundary so the network tells us which "
+     "district it is really in. This is what gives congestion an address."),
+]
+
+# A QoD session is created REQUESTED and becomes AVAILABLE only once the
+# network has actually allocated resources, which took about fifteen seconds
+# when measured. Every session is created first and read afterwards, so one
+# wait covers all four rather than four waits covering one each.
+_QOD_WAIT_S = float(os.getenv("DEMO_QOD_WAIT_SECONDS", "16"))
+# Long enough to read the status back, short enough that a session forgotten by
+# a crash expires on its own. Deleted explicitly either way.
+_QOD_DURATION_S = 120
+
+_apis_cache: dict | None = None
+_apis_cached_at: float = 0.0
+
+
+def _timed(fn, *args, **kwargs) -> dict:
+    """Run one call and report what came back, including the failure."""
+    t0 = time.time()
+    try:
+        value = fn(*args, **kwargs)
+        return {"ok": True, "answer": value,
+                "took_ms": round((time.time() - t0) * 1000)}
+    except Exception as exc:
+        return {"ok": False, "error": f"{type(exc).__name__}: {exc}"[:200],
+                "took_ms": round((time.time() - t0) * 1000)}
+
+
+@router.get("/apis")
+def all_apis(refresh: bool = False, skip_qod: bool = False,
+             _: dict = Depends(current_user)):
+    """
+    Call every CAMARA API CROVIA uses, on Nokia's four test devices, and report
+    the raw answers.
+
+    WHY THIS EXISTS. /api/demo/nokia proves two of the six APIs: it verifies
+    four locations and retrieves one position. Somebody checking whether this
+    project really talks to Nokia had no way to see the other four, and a
+    claim that an API is "wired up" is worth nothing next to its live answer.
+
+    So this calls all six, in front of the reader, and prints what came back.
+    Including the answers that are wrong: two of Nokia's four devices contradict
+    their own documentation, and Location Verification and Location Retrieval
+    disagree about where device 1001 is by roughly four thousand kilometres.
+    Those are reported rather than quietly dropped, because a page that only
+    shows the calls that worked is not evidence of anything.
+
+    SUBSCRIPTIONS ARE CREATED AND THEN DELETED. Congestion and geofencing are
+    push APIs: the only way to prove they work is to open a subscription. Each
+    one is torn down in the same request, and given a short expiry as well, so
+    a failure here cannot leave paid subscriptions running for ever.
+
+    QoD IS THE SLOW ONE. A session is created REQUESTED and only becomes
+    AVAILABLE once the network has allocated resources, which takes about
+    fifteen seconds. All four are opened first and read afterwards, so the wait
+    happens once. Pass skip_qod=true to skip it if you only want the fast calls.
+
+    The whole result is cached for five minutes: the answers are fixed to the
+    device anyway, and a page anyone can refresh should not spend real money on
+    every visit.
+    """
+    global _apis_cache, _apis_cached_at
+
+    if _apis_cache is not None and not refresh and (time.time() - _apis_cached_at) < _CACHE_S:
+        return {**_apis_cache, "cached": True,
+                "cached_seconds_ago": round(time.time() - _apis_cached_at)}
+
+    key = os.getenv("NOKIA_NAC_API_KEY", "").strip()
+    if not key:
+        return {
+            "live": False,
+            "reason": "NOKIA_NAC_API_KEY is not set on this service, so these "
+                      "would be answered by a built-in stand-in rather than by "
+                      "Nokia. Nothing is shown rather than something that looks "
+                      "real and is not.",
+        }
+
+    from app.camara.client import NokiaClient
+    from app.config import settings
+    from app.core.city import city
+
+    client = NokiaClient(api_key=key)
+    started = time.time()
+    results: dict[str, dict] = {}
+    phones = [p for p, _d, _desc in TEST_DEVICES]
+
+    # --- 1. Location Verification -----------------------------------------
+    rows = []
+    for phone, documented, description in TEST_DEVICES:
+        r = _timed(client.verify_location, phone, LUSAIL_RAMP)
+        row = {"device": phone, "description": description,
+               "documented_answer": documented, "took_ms": r["took_ms"]}
+        if r["ok"]:
+            row["answer"] = r["answer"]["verification_result"]
+            if "match_rate" in r["answer"]:
+                row["match_rate"] = r["answer"]["match_rate"]
+            row["matches_documentation"] = row["answer"] == documented
+        else:
+            row["error"] = r["error"]
+            row["matches_documentation"] = False
+        rows.append(row)
+    results["location_verification"] = {
+        "question": "Is this device inside a 600 m circle at the Lusail north "
+                    "concourse?",
+        "area": {"lat": LUSAIL_RAMP.lat, "lon": LUSAIL_RAMP.lon,
+                 "radius_m": LUSAIL_RAMP.radius_m},
+        "devices": rows,
+    }
+
+    # --- 2. Reachability ---------------------------------------------------
+    rows = []
+    for phone, _documented, description in TEST_DEVICES:
+        r = _timed(client.get_reachability, phone)
+        row = {"device": phone, "description": description,
+               "took_ms": r["took_ms"]}
+        row.update(r["answer"] if r["ok"] else {"error": r["error"]})
+        rows.append(row)
+    results["reachability"] = {
+        "question": "Can this device be reached, and over what?",
+        "devices": rows,
+    }
+
+    # --- 3. Location Retrieval --------------------------------------------
+    rows = []
+    for phone, _documented, description in TEST_DEVICES:
+        r = _timed(client.retrieve_location, phone, 120)
+        row = {"device": phone, "description": description,
+               "took_ms": r["took_ms"]}
+        row.update(r["answer"] if r["ok"] else {"error": r["error"]})
+        rows.append(row)
+    results["location_retrieval"] = {
+        "question": "Where is this device, in coordinates?",
+        "devices": rows,
+        "note": "Compare 1001 with its Location Verification answer above. "
+                "Verification puts it inside a circle in Lusail; retrieval puts "
+                "it in Budapest. Two APIs cannot both be right about one "
+                "handset, which is the clearest evidence these answers are "
+                "fixed to the phone number rather than measured.",
+    }
+
+    # --- 4. Quality on Demand ---------------------------------------------
+    if skip_qod:
+        results["qod"] = {"skipped": True,
+                          "note": "skip_qod=true was passed, so no session was "
+                                  "opened. Drop the parameter to run it."}
+    else:
+        server_ip = os.getenv("QOD_APP_SERVER_IP", "").strip()
+        if not server_ip:
+            results["qod"] = {
+                "skipped": True,
+                "note": "QOD_APP_SERVER_IP is not set on this service. QoD "
+                        "prioritises the route between a device and ONE named "
+                        "server, so without an address there is nothing to "
+                        "prioritise towards and no honest call to make.",
+            }
+        else:
+            profile = os.getenv("QOD_PROFILE", "QOS_E").strip() or "QOS_E"
+            opened: list[dict] = []
+            for phone, _documented, description in TEST_DEVICES:
+                r = _timed(client.create_qod_session, phone, server_ip,
+                           profile, _QOD_DURATION_S)
+                row = {"device": phone, "description": description,
+                       "profile": profile, "created_ms": r["took_ms"]}
+                if r["ok"]:
+                    row["session_id"] = r["answer"]["session_id"]
+                    row["status_at_creation"] = r["answer"]["status"]
+                else:
+                    row["error"] = r["error"]
+                opened.append(row)
+
+            # One wait for all four, not four waits for one each.
+            live = [r for r in opened if r.get("session_id")]
+            if live:
+                time.sleep(_QOD_WAIT_S)
+            for row in live:
+                back = _timed(client.get_qod_session, row["session_id"])
+                if back["ok"]:
+                    row["status_after_wait"] = back["answer"]["status"]
+                    row["status_info"] = back["answer"].get("status_info")
+                else:
+                    row["read_error"] = back["error"]
+                # Always torn down. A session is billed for as long as it
+                # lives, so a demonstration that leaves four of them running is
+                # a demonstration of how to waste money.
+                gone = _timed(client.delete_qod_session, row["session_id"])
+                row["deleted"] = gone["ok"]
+                if not gone["ok"]:
+                    row["delete_error"] = gone["error"]
+
+            became_available = sum(1 for r in opened
+                                   if r.get("status_after_wait") == "AVAILABLE")
+            results["qod"] = {
+                "question": f"Will the network protect this device's route to "
+                            f"{server_ip} using {profile}?",
+                "waited_seconds": _QOD_WAIT_S if live else 0,
+                "reached_available": f"{became_available}/{len(opened)}",
+                "devices": opened,
+                "note": "A session is created REQUESTED and becomes AVAILABLE "
+                        "only once the network has actually allocated "
+                        "resources, so the status at creation proves nothing. "
+                        "Every session above was deleted again in this same "
+                        "request - sessions are billed while they live.",
+            }
+
+    # --- 5 and 6. The two push APIs ---------------------------------------
+    # These have no question-and-answer form: the network pushes to us later.
+    # What can be proved now is that a subscription is accepted, which is the
+    # step everything else depends on. Each is deleted immediately.
+    sink_base = settings.webhook_base_url.rstrip("/")
+    token_set = bool(settings.webhook_auth_token
+                     and settings.webhook_auth_token != "change-me")
+
+    rows = []
+    for phone, _documented, description in TEST_DEVICES:
+        sink = f"{sink_base}/webhooks/congestion/{phone.lstrip('+')}"
+        r = _timed(client.create_congestion_subscription, phone, sink, 300)
+        row = {"device": phone, "description": description,
+               "webhook": sink, "took_ms": r["took_ms"]}
+        if r["ok"]:
+            row["subscription_id"] = r["answer"]
+            row["deleted"] = _timed(client.delete_subscription, r["answer"])["ok"]
+        else:
+            row["error"] = r["error"]
+        rows.append(row)
+    results["congestion_insights"] = {
+        "question": "Will the network notify us when this device's cell is busy?",
+        "devices": rows,
+        "note": "A congestion notification carries only a level and a time "
+                "window - no device identity and no location - so each device "
+                "is subscribed at its own webhook address and that address is "
+                "the only thing that identifies it. Every subscription above "
+                "was deleted again in this same request.",
+        "webhook_token_configured": token_set,
+    }
+
+    district = next(iter(city.districts.values()), None)
+    rows = []
+    if district is None:
+        results["geofencing"] = {"skipped": True,
+                                 "note": "no district is loaded in the city map"}
+    else:
+        area = Area(district.center.lat, district.center.lon, district.radius_m)
+        for phone, _documented, description in TEST_DEVICES:
+            sink = f"{sink_base}/webhooks/geofencing/{phone.lstrip('+')}"
+            r = _timed(client.create_geofence_subscription, phone,
+                       district.id, area, sink, 300)
+            row = {"device": phone, "description": description,
+                   "district": district.id, "webhook": sink,
+                   "took_ms": r["took_ms"]}
+            if r["ok"]:
+                sub_id, initial = r["answer"]
+                row["subscription_id"] = sub_id
+                row["initial_event"] = initial
+                row["deleted"] = _timed(client.delete_subscription, sub_id)["ok"]
+            else:
+                row["error"] = r["error"]
+            rows.append(row)
+        results["geofencing"] = {
+            "question": f"Will the network tell us when this device enters or "
+                        f"leaves {district.id}?",
+            "area": {"lat": area.lat, "lon": area.lon, "radius_m": area.radius_m},
+            "devices": rows,
+            "note": "Geofences are placed at DISTRICT level on purpose. "
+                    "Positioning is accurate to 150-400 m, so a tighter circle "
+                    "would report a device entering and leaving constantly as "
+                    "it moves between towers. Every subscription above was "
+                    "deleted again in this same request.",
+            "webhook_token_configured": token_set,
+        }
+
+    # --- what it cost, and whether each API answered ----------------------
+    summary = []
+    for api_key, label, weight, purpose in _API_ORDER:
+        block = results.get(api_key, {})
+        if block.get("skipped"):
+            state, detail = "skipped", block.get("note", "")
+        else:
+            devices = block.get("devices", [])
+            answered = sum(1 for d in devices if "error" not in d)
+            state = ("live" if answered == len(devices) and devices
+                     else "partial" if answered else "failed")
+            detail = f"{answered}/{len(devices)} devices answered"
+        summary.append({"api": label, "state": state, "detail": detail,
+                        "relative_cost": weight, "what_it_is_for": purpose})
+
+    _apis_cache = {
+        "live": True,
+        "devices_used": phones,
+        "summary": summary,
+        "results": results,
+        "calls_spent": client.ledger.summary(),
+        "took_ms": round((time.time() - started) * 1000),
+        "notes": [
+            "These are the only four devices Nokia provides in Simulator mode. "
+            "Any other number is refused, because there is no real network "
+            "behind it.",
+            "Every answer is fixed to the phone number rather than worked out "
+            "from a position, so the same device answers the same way about a "
+            "circle anywhere in the world. That is why CROVIA's detection "
+            "figures come from simulation: this proves the integration, and it "
+            "cannot prove anything about a crowd.",
+            "Nothing here was left running. Every subscription and every "
+            "priority session created above was deleted in the same request.",
+        ],
+        "cached": False,
+    }
+    _apis_cached_at = time.time()
+    return _apis_cache

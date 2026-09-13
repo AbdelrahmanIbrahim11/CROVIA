@@ -79,6 +79,7 @@ class CamaraClient(Protocol):
     def delete_subscription(self, sub_id: str) -> None: ...
     def create_qod_session(self, phone: str, server_ip: str, profile: str,
                            duration_s: int, sink: str | None = None) -> dict: ...
+    def get_qod_session(self, session_id: str) -> dict: ...
     def delete_qod_session(self, session_id: str) -> None: ...
     def extend_qod_session(self, session_id: str, extra_s: int) -> dict: ...
 
@@ -171,6 +172,21 @@ class SimulatorClient:
             "expires_at": time.time() + duration_s,
         }
         return {"session_id": sid, "status": "REQUESTED",
+                "status_info": None, "expires_at": None}
+
+    def get_qod_session(self, session_id: str) -> dict:
+        """
+        Read a session back.
+
+        The simulator answers AVAILABLE because the wait it is standing in for
+        has, by the time anybody reads, already happened. A real network may
+        still say REQUESTED, which is why callers poll rather than assume.
+        """
+        row = self.qod_sessions.get(session_id)
+        if row is None:
+            return {"session_id": session_id, "status": "UNAVAILABLE",
+                    "status_info": "DELETE_REQUESTED"}
+        return {"session_id": session_id, "status": "AVAILABLE",
                 "status_info": None, "expires_at": None}
 
     def delete_qod_session(self, session_id: str) -> None:
@@ -363,6 +379,28 @@ class NokiaClient:
         r = self._nac.qod.create_session_v1(**kwargs)
         return {
             "session_id": r.session_id,
+            "status": getattr(r, "qos_status", None),
+            "status_info": getattr(r, "status_info", None),
+            "expires_at": str(getattr(r, "expires_at", "")) or None,
+        }
+
+    def get_qod_session(self, session_id: str) -> dict:
+        """
+        Read a live session's status back from the network.
+
+        A session is created REQUESTED and becomes AVAILABLE only once the
+        network has actually allocated resources, so the status at creation
+        proves nothing. The notification sink reports the change, but a demo
+        that has nowhere to receive a webhook needs to ask directly - and so
+        does any caller that wants to know whether priority is really in place
+        before relying on it.
+
+        Not metered: this reads a session rather than creating one, and the
+        session was already charged when it was opened.
+        """
+        r = self._nac.qod.get_session_v1(session_id)
+        return {
+            "session_id": session_id,
             "status": getattr(r, "qos_status", None),
             "status_info": getattr(r, "status_info", None),
             "expires_at": str(getattr(r, "expires_at", "")) or None,

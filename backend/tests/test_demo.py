@@ -71,6 +71,17 @@ def run() -> int:
               and r.json().get("live") is False,
               "reports why instead of showing a stand-in as real")
 
+        print("\n-- every API, on the four devices --------------------------------")
+        check("the all-APIs page needs a token",
+              c.get("/api/demo/apis").status_code == 401)
+        r = c.get("/api/demo/apis", headers=h)
+        # Same rule as /nokia. Without a key these answers would come from the
+        # built-in stand-in, and a page whose whole purpose is to prove the
+        # calls are real must not show a stand-in as if it were Nokia.
+        check("it refuses to fake it without a key", r.status_code == 200
+              and r.json().get("live") is False,
+              "a judge reading this must know the answers are Nokia's")
+
         print("\n-- refusing nonsense --------------------------------------------")
         check("too many attendees", c.post("/api/demo/simulation", headers=h,
                                            json={"attendees": 5_000_000}).status_code == 422)

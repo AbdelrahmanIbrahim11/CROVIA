@@ -106,7 +106,6 @@ export function UserDashboardScreen({
     : [];
 
   // Unread warnings addressed to this person, for the bell.
-  const unreadMine = state?.my_warnings?.filter((w) => !w.read).length ?? 0;
 
   // The banner appears only for a real alarm. Offline shows nothing rather
   // than a sample warning about a crowd that does not exist.
@@ -191,7 +190,10 @@ export function UserDashboardScreen({
               : 'Live · no crowd warnings'
             : REGION_SUB
         }
-        unread={unreadMine || unread}
+        // One count, from one place. This used to prefer a second
+        // number derived from the last five warnings in the map
+        // payload, so the badge disagreed with the Alerts list.
+        unread={unread}
         onBell={onOpenAlerts}
         onSettings={() => setSettingsOpen(true)}
       />

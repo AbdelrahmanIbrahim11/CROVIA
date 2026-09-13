@@ -9,6 +9,7 @@ import {
   markWarningRead,
 } from '../api';
 import { zoneById } from '../geo';
+import { warningsChanged } from '../useLiveState';
 
 /**
  * The warnings this person was actually sent.
@@ -60,18 +61,21 @@ export function NotificationsScreen() {
     // delete fails the next refresh puts it back.
     setWarnings((list) => list.filter((x) => x.id !== w.id));
     await deleteWarning(w.id);
+    warningsChanged();
   }
 
   /** Empty the whole list. Only this person's - the city's record is untouched. */
   async function clearAll() {
     setWarnings([]);
     await clearMyWarnings();
+    warningsChanged();
     refresh();
   }
 
   async function open(w: Warning) {
     if (w.read) return;
     await markWarningRead(w.id);
+    warningsChanged();
     refresh();
   }
 

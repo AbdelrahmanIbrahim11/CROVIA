@@ -91,6 +91,21 @@ export function useNearby(intervalMs = 5000) {
  * been warned about anything. A badge that is always on is a badge nobody
  * looks at.
  */
+/**
+ * Anyone who wants to know when this person's messages change.
+ *
+ * The badge used to poll on its own fifteen-second timer, so after clearing the
+ * list the screen said "Nothing to report" while the tab still showed 9+ for up
+ * to a quarter of a minute. A number that disagrees with the list beside it is
+ * worse than no number at all.
+ */
+const warningListeners = new Set<() => void>();
+
+/** Call after deleting or clearing, so every badge updates at once. */
+export function warningsChanged(): void {
+  warningListeners.forEach((fn) => fn());
+}
+
 export function useUnreadWarnings(intervalMs = 15000) {
   const [unread, setUnread] = useState(0);
 
@@ -102,9 +117,12 @@ export function useUnreadWarnings(intervalMs = 15000) {
     };
     tick();
     const timer = setInterval(tick, intervalMs);
+    // Re-count the moment something is deleted, rather than on the next tick.
+    warningListeners.add(tick);
     return () => {
       cancelled = true;
       clearInterval(timer);
+      warningListeners.delete(tick);
     };
   }, [intervalMs]);
 

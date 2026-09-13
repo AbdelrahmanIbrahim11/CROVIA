@@ -109,17 +109,6 @@ export async function fetchLiveState(signal?: AbortSignal): Promise<LiveState | 
   }
 }
 
-export async function stepAgent(): Promise<unknown | null> {
-  try {
-    const r = await fetch(`${API_BASE}/api/agent/step`, {
-      method: 'POST',
-      headers: authHeader(),
-    });
-    return r.ok ? await r.json() : null;
-  } catch {
-    return null;
-  }
-}
 
 export type Incident = {
   id: string;
@@ -340,6 +329,24 @@ export type OperatorZone = {
   capacity_per_min?: number;
   max_safe_people?: number;
 };
+
+/**
+ * The watch zones an operator has drawn by hand.
+ *
+ * Needed so they can be removed again. Until this existed a drawn zone could be
+ * created and never deleted - it reloaded on every restart and quietly stayed
+ * on the map for ever, which is how a gate that was open for one match ends up
+ * being watched all season.
+ */
+export async function fetchOperatorZones(): Promise<OperatorZone[]> {
+  try {
+    const r = await fetch(`${API_BASE}/api/zones/operator`, { headers: authHeader() });
+    if (!r.ok) return [];
+    return ((await r.json()).zones ?? []) as OperatorZone[];
+  } catch {
+    return [];
+  }
+}
 
 /**
  * Add a zone an operator drew.

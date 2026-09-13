@@ -31,11 +31,9 @@ const borderColor = '#2A314A';
 
 export function UserDashboardScreen({
   unread,
-  onOpenAlerts,
   onSignOut,
 }: {
   unread: number;
-  onOpenAlerts: () => void;
   onSignOut: () => void;
 }) {
   // A citizen reads /api/nearby, not /api/state. Operations data is refused to
@@ -156,7 +154,6 @@ export function UserDashboardScreen({
         // number derived from the last five warnings in the map
         // payload, so the badge disagreed with the Alerts list.
         unread={unread}
-        onBell={onOpenAlerts}
         onSettings={() => setSettingsOpen(true)}
       />
 

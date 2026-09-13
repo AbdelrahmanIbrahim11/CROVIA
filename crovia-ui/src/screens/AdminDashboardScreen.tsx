@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { ScrollView } from 'react-native';
 import { Box, Text, VStack, HStack, Pressable, Center } from '@gluestack-ui/themed';
 import { AppHeader, Metric, Sheet } from '../components/Chrome';
@@ -9,7 +9,13 @@ import { DemoCard } from '../components/DemoCard';
 import { StatusChip } from '../components/StatusChip';
 import { MotionButton } from '../components/MotionButton';
 import { REGION } from '../data';
-import { createOperatorZone, toOverlays } from '../api';
+import {
+  createOperatorZone,
+  deleteOperatorZone,
+  fetchOperatorZones,
+  toOverlays,
+  type OperatorZone,
+} from '../api';
 import { useLiveState } from '../useLiveState';
 import { districts, zoneById } from '../geo';
 
@@ -42,6 +48,27 @@ export function AdminDashboardScreen({
 
   const [tool, setTool] = useState<Tool>(null);
   const [railOpen, setRailOpen] = useState(true);
+
+  // The zones this operator drew by hand, so they can be taken down again.
+  //
+  // Without a list there was no way to remove one: a gate opened for a single
+  // match was watched for ever, reloading on every restart, and the only way
+  // out was a database edit.
+  const [drawn, setDrawn] = useState<OperatorZone[]>([]);
+
+  const loadDrawn = useCallback(async () => {
+    setDrawn(await fetchOperatorZones());
+  }, []);
+
+  useEffect(() => { loadDrawn(); }, [loadDrawn]);
+
+  async function removeZone(z: OperatorZone) {
+    // Off the list first, then off the server. If it fails the next load puts
+    // it back, which is better than a tap that appears to do nothing.
+    setDrawn((list) => list.filter((x) => x.zone_id !== z.zone_id));
+    await deleteOperatorZone(z.zone_id);
+    loadDrawn();
+  }
   const [settingsOpen, setSettingsOpen] = useState(false);
 
   // Drawing a watch zone. The operator taps the map, then supplies the two
@@ -137,6 +164,7 @@ export function AdminDashboardScreen({
     setDraft(null);
     setLabel('');
     setTool(null);
+    loadDrawn();
   }
 
   const tools: { key: Exclude<Tool, null>; label: string; glyph: string }[] = [
@@ -280,6 +308,48 @@ export function AdminDashboardScreen({
               </HStack>
 
               <ScrollView contentContainerStyle={{ gap: 12, paddingTop: 16, paddingBottom: 24 }}>
+                {drawn.length ? (
+                  <VStack space="xs">
+                    <Text size="2xs" color={textMuted} letterSpacing={1}>
+                      ZONES YOU DREW
+                    </Text>
+                    {drawn.map((z) => (
+                      <HStack
+                        key={z.zone_id}
+                        alignItems="center"
+                        borderWidth={1}
+                        borderColor={borderColor}
+                        borderRadius="$lg"
+                        p="$3"
+                        space="md"
+                        bg="#111420"
+                      >
+                        <VStack flex={1}>
+                          <Text size="sm" fontWeight="$bold" color={textPrimary}
+                                numberOfLines={1}>
+                            {z.label}
+                          </Text>
+                          <Text size="2xs" color={textMuted}>
+                            {z.width_m} m wide · passes about{' '}
+                            {z.capacity_per_min ?? Math.round(z.width_m * 72)} people a minute
+                          </Text>
+                        </VStack>
+                        <Pressable
+                          onPress={() => removeZone(z)}
+                          hitSlop={12}
+                          accessibilityRole="button"
+                          accessibilityLabel={`Remove ${z.label}`}
+                        >
+                          <Box borderWidth={1} borderColor={borderColor}
+                               borderRadius="$md" px="$3" py="$1">
+                            <Text size="2xs" color={textMuted}>Remove</Text>
+                          </Box>
+                        </Pressable>
+                      </HStack>
+                    ))}
+                  </VStack>
+                ) : null}
+
                 {zoneRows.map((z) => {
                   const lc = levelColors[z.level];
                   return (

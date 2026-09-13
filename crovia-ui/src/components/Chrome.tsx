@@ -21,13 +21,11 @@ export function AppHeader({
   region,
   subtitle,
   unread = 0,
-  onBell,
   onSettings,
 }: {
   region: string;
   subtitle?: string;
   unread?: number;
-  onBell?: () => void;
   onSettings?: () => void;
 }) {
   return (

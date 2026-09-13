@@ -128,7 +128,6 @@ function Shell() {
         activeScreen = (
           <UserDashboardScreen
             unread={unread}
-            onOpenAlerts={() => setTab('alerts')}
             onSignOut={handleSignOut}
           />
         );

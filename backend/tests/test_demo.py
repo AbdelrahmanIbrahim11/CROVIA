@@ -72,8 +72,15 @@ def run() -> int:
               "reports why instead of showing a stand-in as real")
 
         print("\n-- every API, on the four devices --------------------------------")
-        check("the all-APIs page needs a token",
-              c.get("/api/demo/apis").status_code == 401)
+        # Deliberately readable without an account. A judge sent the link
+        # pastes it into a browser, and a browser cannot carry a bearer token.
+        check("the all-APIs page opens without signing in",
+              c.get("/api/demo/apis").status_code == 200,
+              "a stranger checking the integration must not be refused")
+        # But refreshing spends real calls, so that part still needs an account.
+        check("a stranger cannot force a paid refresh",
+              c.get("/api/demo/apis?refresh=true").status_code == 200,
+              "ignored rather than refused, and served from cache")
         r = c.get("/api/demo/apis", headers=h)
         # Same rule as /nokia. Without a key these answers would come from the
         # built-in stand-in, and a page whose whole purpose is to prove the

@@ -30,7 +30,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
 from app import runtime
-from app.auth.deps import current_user
+from app.auth.deps import current_user, optional_user
 from app.camara.client import Area
 
 logger = logging.getLogger("crovia.demo")
@@ -359,10 +359,21 @@ def _timed(fn, *args, **kwargs) -> dict:
 
 @router.get("/apis")
 def all_apis(refresh: bool = False, skip_qod: bool = False,
-             _: dict = Depends(current_user)):
+             user: dict | None = Depends(optional_user)):
     """
     Call every CAMARA API CROVIA uses, on Nokia's four test devices, and report
     the raw answers.
+
+    READABLE WITHOUT AN ACCOUNT, WHICH IS THE POINT. Somebody sent this link
+    will paste it into a browser, and a browser address bar cannot carry a
+    bearer token - so an endpoint whose entire purpose is to let a stranger
+    check that the integration is real must not begin by refusing them. There
+    is nothing here to protect: the only devices involved are Nokia's four
+    fixed test numbers, which belong to nobody and never move.
+
+    What signing in buys is the right to SPEND. The answer is cached, and only
+    a signed-in caller may force a fresh run, because that costs real calls and
+    an open refresh button is an open invitation to empty the budget.
 
     WHY THIS EXISTS. /api/demo/nokia proves two of the six APIs: it verifies
     four locations and retrieves one position. Somebody checking whether this
@@ -391,6 +402,12 @@ def all_apis(refresh: bool = False, skip_qod: bool = False,
     every visit.
     """
     global _apis_cache, _apis_cached_at
+
+    # Refreshing spends money, so it is the one thing that needs an account.
+    # Silently ignored rather than refused: a visitor who adds ?refresh=true
+    # out of curiosity should still get the page.
+    if refresh and user is None:
+        refresh = False
 
     if _apis_cache is not None and not refresh and (time.time() - _apis_cached_at) < _CACHE_S:
         return {**_apis_cache, "cached": True,

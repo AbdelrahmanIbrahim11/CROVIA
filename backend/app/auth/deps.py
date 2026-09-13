@@ -63,6 +63,23 @@ def current_user(authorization: str | None = Header(default=None)) -> dict:
     return payload
 
 
+def optional_user(authorization: str | None = Header(default=None)) -> dict | None:
+    """
+    The signed-in caller if there is one, and None if there is not.
+
+    For pages that are safe to read without an account but where being signed
+    in still means something - typically the difference between reading a
+    cached answer and being allowed to spend money refreshing it.
+
+    A bad or expired token is treated as no token rather than as an error: the
+    caller asked for something anyone may see, so refusing them because of a
+    stale token would be worse than simply serving the public version.
+    """
+    if not authorization or not authorization.lower().startswith("bearer "):
+        return None
+    return decode_token(authorization.split(" ", 1)[1].strip())
+
+
 def require_role(minimum: str):
     """
     Build a dependency that demands at least this much authority.

@@ -115,10 +115,10 @@ def test_a_damaged_hash_is_a_failed_login_not_a_crash():
 # ---------------------------------------------------------------------------
 
 def test_a_token_says_who_you_are():
-    token, _ = create_access_token(user_id="abc", role="admin",
+    token, _ = create_access_token(user_id="abc", role="authority",
                                    username="Ops", email="o@example.com")
     claims = decode_token(token)
-    assert claims["sub"] == "abc" and claims["role"] == "admin"
+    assert claims["sub"] == "abc" and claims["role"] == "authority"
 
 
 def test_a_tampered_token_is_refused():
@@ -193,17 +193,31 @@ def test_a_stranger_cannot_make_themselves_an_operator():
     This was possible: user_type came from the request body and was believed,
     so anyone who found the address could ask for "admin" and be given one.
     """
-    for role in ("admin", "authority"):
-        r = client.post("/auth/register", json={
-            "username": "Attacker", "password": "a-good-password",
-            "email": _email(), "user_type": role})
-        assert r.status_code == 403, f"{role} was handed out with no invite code"
+    r = client.post("/auth/register", json={
+        "username": "Attacker", "password": "a-good-password",
+        "email": _email(), "user_type": "authority"})
+    assert r.status_code == 403, "authority was handed out with no invite code"
+
+
+def test_the_admin_role_no_longer_exists():
+    """
+    There were three roles and now there are two.
+
+    "admin" sat between the public and the emergency services guarding exactly
+    the screens the authority already had. A role that still half-exists is
+    worse than one that is gone: it is the one nobody remembers to secure.
+    """
+    r = client.post("/auth/register", json={
+        "username": "Old Admin", "password": "a-good-password",
+        "email": _email(), "user_type": "admin", "invite_code": "irrelevant"})
+    assert r.status_code == 422, "admin is still being accepted"
+    assert "admin" not in r.json()["detail"]
 
 
 def test_a_wrong_invite_code_is_refused():
     r = client.post("/auth/register", json={
         "username": "Attacker", "password": "a-good-password",
-        "email": _email(), "user_type": "admin", "invite_code": "guess"})
+        "email": _email(), "user_type": "authority", "invite_code": "guess"})
     assert r.status_code == 403
 
 
@@ -248,7 +262,7 @@ def test_a_citizen_cannot_read_operations_data():
 
 
 def test_an_operator_can_read_operations_data():
-    token, _ = _token("admin")
+    token, _ = _token("authority")
     for path in OPERATIONS:
         assert client.get(path, headers=_auth(token)).status_code == 200, path
 
@@ -274,10 +288,15 @@ def test_the_citizen_view_carries_no_operations_figures():
 
 
 def test_only_an_authority_may_close_an_incident():
-    """Acknowledging is a record of responsibility, so it needs the right role."""
-    operator, _ = _token("admin")
+    """
+    Acknowledging is a record of responsibility, so it needs the right role.
+
+    Checked against a citizen now that "admin" is gone - the account below the
+    authority is the public, and they must not be able to sign off an incident.
+    """
+    citizen, _ = _token("normal")
     fake = str(uuid.uuid4())
-    r = client.post(f"/api/incidents/{fake}/acknowledge", headers=_auth(operator))
+    r = client.post(f"/api/incidents/{fake}/acknowledge", headers=_auth(citizen))
     assert r.status_code == 403
 
     authority, _ = _token("authority")
@@ -313,7 +332,7 @@ def test_a_citizen_cannot_change_another_persons_consent():
 
 def test_an_operator_account_has_no_warnings_of_its_own():
     """An operator watches the city; they are not the ones being warned."""
-    token, _ = _token("admin")
+    token, _ = _token("authority")
     body = client.get("/api/warnings/me", headers=_auth(token)).json()
     assert body["warnings"] == []
 

@@ -43,7 +43,7 @@ logger = logging.getLogger("crovia.auth")
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
-ROLES = ("normal", "admin", "authority")
+ROLES = ("normal", "authority")
 
 
 class RegisterIn(BaseModel):

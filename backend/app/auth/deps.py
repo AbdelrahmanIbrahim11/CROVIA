@@ -29,7 +29,18 @@ from app.auth.security import decode_token
 
 # Higher number means more power. Comparing numbers keeps the rule in one place
 # instead of scattering role lists through the routes.
-RANK = {"normal": 1, "admin": 2, "authority": 3}
+# Two roles, not three.
+#
+# There used to be a separate "admin" sitting between the public and the
+# emergency services, and in practice nobody could say what it was for that
+# authority did not already cover - so it was one more account type to issue,
+# secure and explain, guarding exactly the same screens. Removing it means one
+# fewer way to get the permissions wrong.
+#
+# Any admin accounts already in the database simply stop being able to sign in.
+# Their rows are left alone rather than deleted, because destroying account
+# history to tidy up a role is not a trade worth making.
+RANK = {"normal": 1, "authority": 2}
 
 
 def current_user(authorization: str | None = Header(default=None)) -> dict:
@@ -73,7 +84,11 @@ def require_role(minimum: str):
 
 # Ready-made, so routes read as a sentence.
 require_signed_in = current_user
-require_operator = require_role("admin")
+# The operations screens - live headcounts, spend, incidents, drawn zones - now
+# belong to the authority. The name is kept because fifteen routes read as
+# "Depends(require_operator)" and that still describes who they are for: the
+# person operating the system, rather than a member of the public.
+require_operator = require_role("authority")
 require_authority = require_role("authority")
 
 

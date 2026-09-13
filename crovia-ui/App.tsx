@@ -21,12 +21,11 @@ import {
   stillValid,
 } from './src/session';
 
-type Route = 'signin' | 'signup' | 'citizen' | 'admin' | 'police';
+type Route = 'signin' | 'signup' | 'citizen' | 'police';
 
 /** Which screen an account type lands on. The backend decides the role, not the app. */
 const HOME: Record<Session['role'], Route> = {
   normal: 'citizen',
-  admin: 'citizen',
   authority: 'police',
 };
 

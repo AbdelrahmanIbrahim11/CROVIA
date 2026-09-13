@@ -17,7 +17,14 @@
 
 import { API_BASE } from './api';
 
-export type Role = 'normal' | 'admin' | 'authority';
+/**
+ * Who someone is. Two roles only.
+ *
+ * "admin" was removed: it sat between the public and the emergency services
+ * and guarded exactly the same screens the authority already had, so it was
+ * one more account type to issue and secure for no gain.
+ */
+export type Role = 'normal' | 'authority';
 
 export type Session = {
   token: string;

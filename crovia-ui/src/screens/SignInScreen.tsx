@@ -20,18 +20,16 @@ if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental
   UIManager.setLayoutAnimationEnabledExperimental(true);
 }
 
-export type Role = 'citizen' | 'admin' | 'police';
+export type Role = 'citizen' | 'police';
 
 const roles: { key: Role; label: string; blurb: string }[] = [
   { key: 'citizen', label: 'Citizen', blurb: 'Sign in with your phone or email' },
-  { key: 'admin', label: 'Admin', blurb: 'Admin accounts are issued by operations. Contact them if you cannot sign in.' },
   { key: 'police', label: 'Authority', blurb: 'Authority accounts are issued by operations. Contact them if you cannot sign in.' },
 ];
 
 /** The tab a person picked, translated into the account type the backend knows. */
 const ACCOUNT_ROLE: Record<Role, AccountRole> = {
   citizen: 'normal',
-  admin: 'admin',
   police: 'authority',
 };
 

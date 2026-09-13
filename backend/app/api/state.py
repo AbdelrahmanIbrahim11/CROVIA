@@ -292,9 +292,16 @@ def get_nearby(db: Session = Depends(getdb), user: dict = Depends(current_user))
         "zones": zones,
         "districts": snap["districts"],
         # Only what is live now, and only the words - not the headcount.
+        #
+        # This used to send the last three alarms in the HISTORY regardless of
+        # whether they had cleared, so the red circles on a citizen's map stayed
+        # there after the crowds had gone - beside a panel correctly reporting
+        # no alarms at all. The comment claimed "live now" long before the code
+        # did.
         "alerts": [{"zone_id": a["zone_id"], "segment_label": a["segment_label"],
                     "reason": a["reason"], "t": a["t"]}
-                   for a in engine.alerts[-3:]],
+                   for a in engine.alerts[-10:]
+                   if engine.zones[a["zone_id"]].alerted][-3:],
         "my_warnings": mine,
         # Named apart from /api/state's "monitored", which is the operations
         # count of sentinels and panel devices. Here it means one thing about

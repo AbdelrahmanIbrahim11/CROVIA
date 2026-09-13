@@ -9,5 +9,9 @@
     "assetBundlePatterns": ["**/*"],
     "ios": { "supportsTablet": true },
     "android": { "adaptiveIcon": { "backgroundColor": "#131C33" } }
+    "android": {
+      "package": "com.crovia.app",
+      "adaptiveIcon": { "backgroundColor": "#131C33" }
+    }
   }
 }

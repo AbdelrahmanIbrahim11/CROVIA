@@ -3,7 +3,6 @@ import { SafeAreaView, StatusBar, View } from 'react-native';
 import { GluestackUIProvider } from '@gluestack-ui/themed';
 import { config } from '@gluestack-ui/config';
 import { TabBar, TabKey } from './src/components/Chrome';
-import { AdminDashboardScreen } from './src/screens/AdminDashboardScreen';
 import { NotificationsScreen } from './src/screens/NotificationsScreen';
 import { PoliceDashboardScreen } from './src/screens/PoliceDashboardScreen';
 import { ProfileScreen } from './src/screens/ProfileScreen';
@@ -27,7 +26,7 @@ type Route = 'signin' | 'signup' | 'citizen' | 'admin' | 'police';
 /** Which screen an account type lands on. The backend decides the role, not the app. */
 const HOME: Record<Session['role'], Route> = {
   normal: 'citizen',
-  admin: 'admin',
+  admin: 'citizen',
   authority: 'police',
 };
 
@@ -114,9 +113,7 @@ function Shell() {
       activeScreen = <ProfileScreen onSignOut={handleSignOut} />;
     } else {
       // tab is 'map'
-      if (route === 'admin') {
-        activeScreen = <AdminDashboardScreen onSignOut={handleSignOut} />;
-      } else if (route === 'police') {
+      if (route === 'police') {
         activeScreen = <PoliceDashboardScreen onSignOut={handleSignOut} />;
       } else {
         activeScreen = (

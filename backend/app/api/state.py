@@ -387,6 +387,35 @@ def my_warnings(db: Session = Depends(getdb), user: dict = Depends(current_user)
     return {"warnings": warnings.inbox(db, hash_phone(phone))}
 
 
+@router.delete("/warnings/{delivery_id}")
+def delete_my_warning(
+    delivery_id: str, db: Session = Depends(getdb), user: dict = Depends(current_user)
+):
+    """
+    Remove one of the caller's own messages.
+
+    The owner is derived from the token, never from the request, so there is no
+    id to guess and no way to delete somebody else's.
+    """
+    phone = phone_of(db, user)
+    if not phone:
+        raise HTTPException(status_code=404, detail="no messages for this account")
+    if not warnings.delete_one(db, delivery_id, hash_phone(phone)):
+        raise HTTPException(status_code=404, detail="no such message")
+    return {"status": "deleted"}
+
+
+@router.delete("/warnings")
+def clear_my_warnings(
+    db: Session = Depends(getdb), user: dict = Depends(current_user)
+):
+    """Empty the caller's own list. The incident record is untouched."""
+    phone = phone_of(db, user)
+    if not phone:
+        return {"cleared": 0}
+    return {"cleared": warnings.clear_all(db, hash_phone(phone))}
+
+
 @router.get("/warnings/{hashed_id}")
 def get_warnings(
     hashed_id: str, db: Session = Depends(getdb), _: dict = Depends(require_operator)

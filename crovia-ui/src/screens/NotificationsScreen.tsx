@@ -1,7 +1,13 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { RefreshControl, ScrollView } from 'react-native';
 import { VStack, Text, Box, HStack, Pressable } from '@gluestack-ui/themed';
-import { Warning, fetchMyWarnings, markWarningRead } from '../api';
+import {
+  Warning,
+  clearMyWarnings,
+  deleteWarning,
+  fetchMyWarnings,
+  markWarningRead,
+} from '../api';
 import { zoneById } from '../geo';
 
 /**
@@ -47,6 +53,22 @@ export function NotificationsScreen() {
     return () => clearInterval(id);
   }, [refresh]);
 
+  /** Remove one message from this person's own list. */
+  async function remove(w: Warning) {
+    // Taken off screen first, then deleted. Waiting for the server before
+    // reacting makes a tap feel broken on a slow connection, and if the
+    // delete fails the next refresh puts it back.
+    setWarnings((list) => list.filter((x) => x.id !== w.id));
+    await deleteWarning(w.id);
+  }
+
+  /** Empty the whole list. Only this person's - the city's record is untouched. */
+  async function clearAll() {
+    setWarnings([]);
+    await clearMyWarnings();
+    refresh();
+  }
+
   async function open(w: Warning) {
     if (w.read) return;
     await markWarningRead(w.id);
@@ -60,9 +82,22 @@ export function NotificationsScreen() {
         refreshControl={<RefreshControl refreshing={loading} onRefresh={refresh} tintColor={accentColor} />}
       >
         <VStack space="xl">
-          <Text size="3xl" fontWeight="$bold" color={textPrimary} mb="$4">
-            Alerts
-          </Text>
+          <HStack alignItems="center" justifyContent="space-between" mb="$4">
+            <Text size="3xl" fontWeight="$bold" color={textPrimary}>
+              Alerts
+            </Text>
+            {warnings.length > 0 ? (
+              <Pressable onPress={clearAll} accessibilityRole="button"
+                         accessibilityLabel="Clear all messages">
+                <Box borderWidth={1} borderColor={borderColor} borderRadius="$lg"
+                     px="$3" py="$2">
+                  <Text size="xs" color={textMuted} fontWeight="$medium">
+                    Clear all
+                  </Text>
+                </Box>
+              </Pressable>
+            ) : null}
+          </HStack>
 
           {!loading && warnings.length === 0 ? (
             <Box bg={cardBg} borderWidth={1} borderColor={borderColor} borderRadius="$xl" p="$6">
@@ -104,7 +139,17 @@ export function NotificationsScreen() {
                       <Text size="md" fontWeight="$bold" color={textPrimary} flex={1} mr="$2">
                         {w.title}
                       </Text>
+                      <HStack alignItems="center" space="sm">
                       <Text size="xs" color={textMuted}>{whenText(w.sent_at)}</Text>
+                      <Pressable
+                        onPress={() => remove(w)}
+                        hitSlop={12}
+                        accessibilityRole="button"
+                        accessibilityLabel="Remove this message"
+                      >
+                        <Text size="lg" color={textMuted}>×</Text>
+                      </Pressable>
+                    </HStack>
                     </HStack>
 
                     {live ? (

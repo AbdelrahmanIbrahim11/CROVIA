@@ -57,14 +57,11 @@ export function AppHeader({
         ) : null}
       </VStack>
 
+      {/* The bell used to live here, duplicating the Alerts tab at the bottom
+          which already carries the same unread count. Two places showing one
+          number is two places to keep in step, and the tab is the one people
+          actually reach for. */}
       <HStack space="md">
-        <Pressable onPress={onBell} hitSlop={10} accessibilityRole="button" accessibilityLabel="Alerts">
-          <Center w={40} h={40} borderRadius="$full" borderWidth={1} borderColor={borderColor} bg={cardBg}>
-            <Text size="lg" color={textPrimary}>◔</Text>
-            {unread > 0 && <Badge count={unread} />}
-          </Center>
-        </Pressable>
-
         <Pressable onPress={onSettings} hitSlop={10} accessibilityRole="button" accessibilityLabel="Settings">
           <Center w={40} h={40} borderRadius="$full" borderWidth={1} borderColor={borderColor} bg={cardBg}>
             <Text size="lg" color={textPrimary}>⋯</Text>

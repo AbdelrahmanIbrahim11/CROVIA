@@ -347,7 +347,10 @@ def mark_read(db: Session, delivery_id: str, owner_hash: str | None = None) -> b
     belonging to somebody else is reported as not found rather than as
     forbidden - confirming that an id exists is itself a leak.
     """
-    q = db.query(alert_delivery).filter(alert_delivery.id == delivery_id)
+    ident = _as_uuid(delivery_id)
+    if ident is None:
+        return False
+    q = db.query(alert_delivery).filter(alert_delivery.id == ident)
     if owner_hash is not None:
         q = q.filter(alert_delivery.hashed_id == owner_hash)
     row = q.one_or_none()
@@ -356,6 +359,67 @@ def mark_read(db: Session, delivery_id: str, owner_hash: str | None = None) -> b
     row.read_at = datetime.now(timezone.utc)
     db.commit()
     return True
+
+
+def _as_uuid(value):
+    """
+    Turn an id from a URL into what the column actually holds.
+
+    The id columns are real UUIDs, and a path parameter arrives as text. Passed
+    straight through, the database driver raises rather than simply not
+    matching - so a mistyped id crashed the request instead of answering "no
+    such message".
+    """
+    import uuid as _uuid
+    if isinstance(value, _uuid.UUID):
+        return value
+    try:
+        return _uuid.UUID(str(value))
+    except (ValueError, AttributeError, TypeError):
+        return None
+
+
+def delete_one(db: Session, delivery_id: str, owner_hash: str) -> bool:
+    """
+    Remove one message from a person's list.
+
+    Theirs only. A message belonging to somebody else is reported as not found
+    rather than as forbidden, because confirming that an id exists is itself a
+    small leak - and these ids point at a record of where a named person was
+    standing.
+
+    The row is deleted outright rather than hidden. A person who clears a
+    warning is asking for it to be gone, and keeping a copy they believe they
+    have removed is not a promise worth breaking for tidiness.
+    """
+    ident = _as_uuid(delivery_id)
+    if ident is None:
+        return False
+    row = (db.query(alert_delivery)
+             .filter(alert_delivery.id == ident,
+                     alert_delivery.hashed_id == owner_hash).one_or_none())
+    if row is None:
+        return False
+    db.delete(row)
+    db.commit()
+    return True
+
+
+def clear_all(db: Session, owner_hash: str) -> int:
+    """
+    Empty one person's list, and nobody else's.
+
+    Note what this does NOT touch: the incident record. The city's history of
+    what happened and when is a separate thing from one person's inbox, and an
+    operator clearing their own messages must not erase the evidence.
+    """
+    n = (db.query(alert_delivery)
+           .filter(alert_delivery.hashed_id == owner_hash)
+           .delete(synchronize_session=False))
+    db.commit()
+    if n:
+        logger.info("a person cleared %d of their own messages", n)
+    return int(n)
 
 
 def coverage(db: Session, zone_id: str, registry=None) -> dict:

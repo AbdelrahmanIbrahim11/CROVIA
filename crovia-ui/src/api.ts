@@ -286,6 +286,33 @@ export async function stopDemo(): Promise<boolean> {
   }
 }
 
+/** Remove one of my own messages. Nobody can remove anyone else's. */
+export async function deleteWarning(id: string): Promise<boolean> {
+  try {
+    const r = await fetch(`${API_BASE}/api/warnings/${id}`, {
+      method: 'DELETE',
+      headers: authHeader(),
+    });
+    return r.ok;
+  } catch {
+    return false;
+  }
+}
+
+/** Empty my own list. The incident record on the city side is untouched. */
+export async function clearMyWarnings(): Promise<number> {
+  try {
+    const r = await fetch(`${API_BASE}/api/warnings`, {
+      method: 'DELETE',
+      headers: authHeader(),
+    });
+    if (!r.ok) return 0;
+    return ((await r.json()).cleared ?? 0) as number;
+  } catch {
+    return 0;
+  }
+}
+
 export async function fetchMyWarnings(): Promise<Warning[]> {
   try {
     const r = await fetch(`${API_BASE}/api/warnings/me`, { headers: authHeader() });

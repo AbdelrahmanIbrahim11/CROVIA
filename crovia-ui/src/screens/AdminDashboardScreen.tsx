@@ -5,6 +5,7 @@ import { AppHeader, Metric, Sheet } from '../components/Chrome';
 import { Input, InputField } from '@gluestack-ui/themed';
 import { LatLon } from '../geo';
 import { CityMap } from '../components/CityMap';
+import { DemoCard } from '../components/DemoCard';
 import { StatusChip } from '../components/StatusChip';
 import { MotionButton } from '../components/MotionButton';
 import { REGION } from '../data';
@@ -212,6 +213,11 @@ export function AdminDashboardScreen({
               </Text>
             </Box>
           ) : null}
+          <DemoCard
+            accentColor={accentColor}
+            borderColor={borderColor}
+            textMuted={textMuted}
+          />
         </CityMap>
 
         {/* Data rail */}

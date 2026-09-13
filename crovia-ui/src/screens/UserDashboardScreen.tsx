@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { fetchDemoState, startDemo, stopDemo, type DemoState } from '../api';
+import { DemoCard } from '../components/DemoCard';
 import { ScrollView, Switch } from 'react-native';
 import {
   Box,
@@ -122,44 +122,6 @@ export function UserDashboardScreen({
       }
     : null;
 
-  // The demonstration, and whether it is running.
-  //
-  // A visitor arriving at a calm city cannot tell a working system from a
-  // broken one - both show nothing happening. This lets them start a simulated
-  // evening themselves and watch it unfold on their own screen, without a
-  // terminal or a pasted command.
-  const [demo, setDemo] = useState<DemoState | null>(null);
-  const [demoBusy, setDemoBusy] = useState(false);
-
-  useEffect(() => {
-    let alive = true;
-    const poll = async () => {
-      const d = await fetchDemoState();
-      if (alive) setDemo(d);
-    };
-    poll();
-    const id = setInterval(poll, 5000);
-    return () => {
-      alive = false;
-      clearInterval(id);
-    };
-  }, []);
-
-  const toggleDemo = async () => {
-    setDemoBusy(true);
-    try {
-      if (demo?.running) {
-        await stopDemo();
-      } else {
-        await startDemo();
-      }
-      setDemo(await fetchDemoState());
-    } finally {
-      setDemoBusy(false);
-    }
-  };
-
-  const demoMinutes = Math.round((demo?.simulated_seconds ?? 0) / 60);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [alertOpen, setAlertOpen] = useState(false);
   const [toastVisible, setToastVisible] = useState(true);
@@ -234,73 +196,11 @@ export function UserDashboardScreen({
             ))}
           </VStack>
 
-          {/* Demonstration control.
-              Labelled plainly as simulated, because a screen that shows
-              invented crowds without saying so is the one mistake this project
-              cannot afford to make. */}
-          <VStack
-            position="absolute"
-            right="$4"
-            bottom={260}
-            bg="rgba(30, 35, 54, 0.94)"
-            borderWidth={1}
-            borderColor={demo?.running ? accentColor : borderColor}
-            borderRadius="$lg"
-            p="$3"
-            space="xs"
-            maxWidth={230}
-          >
-            <Text size="2xs" color={textMuted} letterSpacing={1}>
-              DEMONSTRATION
-            </Text>
-
-            {demo?.running ? (
-              <>
-                <Text size="xs" color={accentColor} fontWeight="$bold">
-                  Simulated crowd running
-                </Text>
-                <Text size="2xs" color={textMuted} lineHeight="$xs">
-                  {demoMinutes < 3
-                    ? 'People are heading for the stadium. No alarm yet — this is what calm looks like.'
-                    : demo.alerts
-                      ? 'The crowd is trapped at the ramp. Check your notifications.'
-                      : 'The crowd is building at the exit ramp. Watch the map turn amber, then red.'}
-                </Text>
-                <Text size="2xs" color={textMuted}>
-                  {demoMinutes} min in · {demo.alerts ?? 0} alarm
-                  {(demo.alerts ?? 0) === 1 ? '' : 's'}
-                </Text>
-              </>
-            ) : (
-              <Text size="2xs" color={textMuted} lineHeight="$xs">
-                The city is calm. Start a simulated evening to watch a crowd
-                build and a warning reach your phone.
-              </Text>
-            )}
-
-            <Pressable
-              onPress={toggleDemo}
-              disabled={demoBusy}
-              accessibilityRole="button"
-            >
-              <Box
-                bg={demo?.running ? '#ff4444' : accentColor}
-                borderRadius="$md"
-                py="$2"
-                px="$3"
-                opacity={demoBusy ? 0.6 : 1}
-                mt="$1"
-              >
-                <Text size="xs" fontWeight="$bold" color="#161A28" textAlign="center">
-                  {demoBusy
-                    ? 'Please wait…'
-                    : demo?.running
-                      ? 'Stop demonstration'
-                      : 'Run demonstration'}
-                </Text>
-              </Box>
-            </Pressable>
-          </VStack>
+          <DemoCard
+            accentColor={accentColor}
+            borderColor={borderColor}
+            textMuted={textMuted}
+          />
         </CityMap>
 
         {/* Standing status card */}

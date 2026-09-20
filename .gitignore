@@ -71,5 +71,7 @@ backend/sim/out_*.json
 #
 # Both are still in the git history if they are ever needed again.
 # ---------------------------------------------------------------------------
-Langgraph_structure/
-Docs/
+# Note the capital D. This rule is NOT the lowercase docs/ folder, which holds
+# the README screenshots and IS part of the repository.
+/Langgraph_structure/
+/Docs/

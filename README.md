@@ -307,3 +307,17 @@ Every setting in `.env` is optional. With an empty file the backend uses SQLite,
 - **The simulated city is not Lusail itself.** The districts and landmarks are real; the corridors between them are modelled, not taken from a real walking map.
 - **Telecom pricing is not public.** Call counts are measured. The money they cost is not.
 - **Test devices do not move.** In the sandbox no device ever crosses a zone boundary, so the enter/leave events never fire there. This is exactly why counting is the main sensor and geofencing is only a bonus — counting works either way.
+
+---
+
+## Demo video
+
+One minute and fifteen seconds: a crowd builds in Lusail, the alarm fires, and the warning arrives on a citizen's phone.
+
+https://github.com/user-attachments/assets/645e0e75-ba4d-4ec9-94e1-22043c583b66
+
+## Presentation
+
+**[📄 CROVIA — slide deck (PDF)](docs/crovia-presentation.pdf)** — presented at the GSMA MENA Ignite hackathon. It covers the problem, the arithmetic behind the detection, why the existing tools fall short, and the figures measured for the Lusail pilot.
+
+A copy of the video is also kept in this repository at [`docs/crovia-demo.mp4`](docs/crovia-demo.mp4).

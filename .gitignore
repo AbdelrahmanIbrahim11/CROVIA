@@ -51,3 +51,25 @@ backend/crovia.db
 # any future backend/lib/ would have disappeared without a word.
 backend/venv/
 backend/.venv/
+
+# ---------------------------------------------------------------------------
+# Simulation output
+# Rewritten by sim/run.py and sim/sweep.py on every run, so committing them
+# only stores a new 255 KB copy of a file the code regenerates anyway.
+# ---------------------------------------------------------------------------
+backend/sim/out_*.json
+
+# ---------------------------------------------------------------------------
+# Kept on disk, out of the repository
+#
+# Langgraph_structure/ holds the first draft of the agent as notebooks. The
+# finished agent is backend/app/ai/graph.py, so the notebooks are working
+# history rather than part of the product.
+#
+# Docs/ holds personal study notes on the Nokia APIs, partly written in
+# Arabic. They were written to learn from, not to be read by a visitor.
+#
+# Both are still in the git history if they are ever needed again.
+# ---------------------------------------------------------------------------
+Langgraph_structure/
+Docs/
